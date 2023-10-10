@@ -28,6 +28,8 @@ type Router interface {
 	NeighborResolver() NeighborResolver
 	AppendTracker(tracker ConnectionTracker)
 	ResetNetwork()
+
+	Reload()
 }
 
 type PreMatchAction uint8

@@ -27,6 +27,7 @@ type myOutboundAdapter struct {
 	router       adapter.Router
 	logger       log.ContextLogger
 	tag          string
+	port         uint16
 	dependencies []string
 }
 
@@ -36,6 +37,19 @@ func (a *myOutboundAdapter) Type() string {
 
 func (a *myOutboundAdapter) Tag() string {
 	return a.tag
+}
+
+func (a *myOutboundAdapter) Port() int {
+	switch a.protocol {
+	case C.TypeDirect, C.TypeBlock, C.TypeDNS, C.TypeTor, C.TypeSelector, C.TypeURLTest:
+		return 65536
+	default:
+		return int(a.port)
+	}
+}
+
+func (a *myOutboundAdapter) SetTag(tag string) {
+	a.tag = tag
 }
 
 func (a *myOutboundAdapter) Network() []string {
@@ -81,8 +95,27 @@ func NewDirectConnection(ctx context.Context, router adapter.Router, this N.Dial
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.Conn
 	var err error
-	if len(metadata.DestinationAddresses) > 0 {
-		outConn, err = N.DialSerial(ctx, this, N.NetworkTCP, metadata.Destination, metadata.DestinationAddresses)
+	addresses := metadata.DestinationAddresses
+	if len(addresses) > 0 {
+		ipv4addrs := common.Filter(addresses, func(it netip.Addr) bool { return it.Is4() })
+		ipv6addrs := common.Filter(addresses, func(it netip.Addr) bool { return it.Is6() })
+		switch domainStrategy {
+		case dns.DomainStrategyUseIPv4:
+			addresses = ipv4addrs
+		case dns.DomainStrategyUseIPv6:
+			addresses = ipv6addrs
+		case dns.DomainStrategyPreferIPv4:
+			addresses = []netip.Addr{}
+			addresses = append(addresses, ipv4addrs...)
+			addresses = append(addresses, ipv6addrs...)
+		case dns.DomainStrategyPreferIPv6:
+			addresses = []netip.Addr{}
+			addresses = append(addresses, ipv4addrs...)
+			addresses = append(addresses, ipv6addrs...)
+		}
+	}
+	if len(addresses) > 0 {
+		outConn, err = N.DialSerial(ctx, this, N.NetworkTCP, metadata.Destination, addresses)
 	} else if metadata.Destination.IsFqdn() {
 		var destinationAddresses []netip.Addr
 		destinationAddresses, err = router.Lookup(ctx, metadata.Destination.Fqdn, domainStrategy)

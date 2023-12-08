@@ -39,6 +39,8 @@ type OutboundGroup interface {
 	Outbound
 	Now() string
 	All() []string
+	UpdateOutbounds(tag string) error
+	SelectedOutbound(network string) Outbound
 }
 
 type URLTestGroup interface {

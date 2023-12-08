@@ -9,14 +9,15 @@ import (
 )
 
 type _Options struct {
-	Schema       string               `json:"$schema,omitempty"`
-	Log          *LogOptions          `json:"log,omitempty"`
-	DNS          *DNSOptions          `json:"dns,omitempty"`
-	NTP          *NTPOptions          `json:"ntp,omitempty"`
-	Inbounds     []Inbound            `json:"inbounds,omitempty"`
-	Outbounds    []Outbound           `json:"outbounds,omitempty"`
-	Route        *RouteOptions        `json:"route,omitempty"`
-	Experimental *ExperimentalOptions `json:"experimental,omitempty"`
+	Schema            string               `json:"$schema,omitempty"`
+	Log               *LogOptions          `json:"log,omitempty"`
+	DNS               *DNSOptions          `json:"dns,omitempty"`
+	NTP               *NTPOptions          `json:"ntp,omitempty"`
+	Inbounds          []Inbound            `json:"inbounds,omitempty"`
+	Outbounds         []Outbound           `json:"outbounds,omitempty"`
+	Route             *RouteOptions        `json:"route,omitempty"`
+	OutboundProviders []OutboundProvider   `json:"outbound_providers,omitempty"`
+	Experimental      *ExperimentalOptions `json:"experimental,omitempty"`
 }
 
 type Options _Options

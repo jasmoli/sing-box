@@ -61,7 +61,7 @@ func (s *CommandServer) handleURLTest(conn net.Conn) error {
 		}
 
 		outbounds := common.Filter(common.Map(outboundGroup.All(), func(it string) adapter.Outbound {
-			itOutbound, _ := service.instance.Router().Outbound(it)
+			itOutbound, _ := service.instance.Router().OutboundWithProvider(it)
 			return itOutbound
 		}), func(it adapter.Outbound) bool {
 			if it == nil {

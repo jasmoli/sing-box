@@ -95,6 +95,7 @@ func NewServer(ctx context.Context, router adapter.Router, logFactory log.Observ
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,
 	})
+	chiRouter.Use(setPrivateNetworkAccess)
 	chiRouter.Use(cors.Handler)
 	chiRouter.Group(func(r chi.Router) {
 		r.Use(authentication(options.Secret))
@@ -268,6 +269,15 @@ func castMetadata(metadata adapter.InboundContext) trafficontrol.Metadata {
 		DNSMode:     "normal",
 		ProcessPath: processPath,
 	}
+}
+
+func setPrivateNetworkAccess(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+			w.Header().Add("Access-Control-Allow-Private-Network", "true")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func authentication(serverSecret string) func(next http.Handler) http.Handler {

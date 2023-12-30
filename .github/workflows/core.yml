@@ -1,0 +1,102 @@
+name: Build Core
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # windows
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
+            goamd64: v1
+
+          # linux
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
+            goamd64: v1
+
+          # darwin
+          - name: darwin-amd64
+            goos: darwin
+            goarch: amd64
+            goamd64: v1
+
+          # android
+          - name: android-arm64
+            goos: android
+            goarch: arm64
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOAMD64: ${{ matrix.goamd64 }}
+      GOARM: ${{ matrix.goarm }}
+      GOMIPS: ${{ matrix.gomips }}
+      CGO_ENABLED: 0
+      TAGS: with_quic,with_dhcp,with_wireguard,with_shadowsocksr,with_ech,with_utls,with_reality_server,with_clash_api,with_v2ray_api,with_gvisor
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest go version
+        id: version
+        run: |
+          echo go_version=$(curl -s https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g') >> $GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.version.outputs.go_version }}
+
+      - name: Setup NDK
+        if: matrix.goos == 'android'
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26b
+          add-to-path: false
+          local-cache: false
+
+      - name: Build, Android
+        if: env.GOOS == 'android'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          VERSION=$(CGO_ENABLED=0 GOOS="" GOARCH="" go run ./cmd/internal/read_tag)
+          CC=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
+          CGO_ENABLED=1 CC=${CC} GOOS=${GOOS} GOARCH=${GOARCH} go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' -s -w -buildid=" -tags ${TAGS} ./cmd/sing-box
+
+      - name: Build, Others
+        if: env.GOOS != 'android'
+        id: build
+        run: make
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-${{ matrix.name }}
+          path: sing-box*
+
+      - name: Post to channel, android-arm64
+        env:
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        if: env.GOOS == 'android' && env.GOARCH == 'arm64'
+        run: |
+          pip install pyTelegramBotAPI
+          path="$GITHUB_WORKSPACE/sing-box"
+          VERSION=$(CGO_ENABLED=0 GOOS="" GOARCH="" go run ./cmd/internal/read_tag)
+          CAPTION=$(echo -e "sing-box version ${VERSION}\n\nEnvironment: go${{ steps.version.outputs.go_version }} ${GOOS}/${GOARCH}\nTags: ${TAGS}\nCGO: enabled\n\n合并 SagerNet/sing-box 和 PuerNya/sing-box 的 outbound-providers，其他平台请前往 <a href=\"https://github.com/jasmoli/sing-box/actions/runs/${{ github.run_id }}\">GitHub</a> 下载\n\ncommit: ${{ github.event.head_commit.message }}")
+          python3 $GITHUB_WORKSPACE/.github/scripts/tg_bot.py "$BOT_TOKEN" "$CHANNEL_ID" "$path" "$CAPTION"

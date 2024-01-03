@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -95,6 +96,7 @@ func NewServer(ctx context.Context, router adapter.Router, logFactory log.Observ
 		AllowedHeaders: []string{"Content-Type", "Authorization"},
 		MaxAge:         300,
 	})
+	chiRouter.Use(setPrivateNetworkAccess(options.TrustedDomain))
 	chiRouter.Use(cors.Handler)
 	chiRouter.Group(func(r chi.Router) {
 		r.Use(authentication(options.Secret))
@@ -106,7 +108,7 @@ func NewServer(ctx context.Context, router adapter.Router, logFactory log.Observ
 		r.Mount("/proxies", proxyRouter(server, router))
 		r.Mount("/rules", ruleRouter(router))
 		r.Mount("/connections", connectionRouter(router, trafficManager))
-		r.Mount("/providers/proxies", proxyProviderRouter())
+		r.Mount("/providers/proxies", proxyProviderRouter(server, router))
 		r.Mount("/providers/rules", ruleProviderRouter())
 		r.Mount("/script", scriptRouter())
 		r.Mount("/profile", profileRouter())
@@ -268,6 +270,46 @@ func castMetadata(metadata adapter.InboundContext) trafficontrol.Metadata {
 		DNSMode:     "normal",
 		ProcessPath: processPath,
 	}
+}
+
+func setPrivateNetworkAccess(domainList []string) func(next http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" && checkDomain(r, domainList) {
+				w.Header().Add("Access-Control-Allow-Private-Network", "true")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func parseOriginHost(r *http.Request) string {
+	if referer := r.Header.Get("Referer"); referer != "" {
+		URL, err := url.Parse(referer)
+		if err == nil {
+			return URL.Host
+		}
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		URL, err := url.Parse(origin)
+		if err == nil {
+			return URL.Host
+		}
+	}
+	return ""
+}
+
+func checkDomain(r *http.Request, list []string) bool {
+	host := parseOriginHost(r)
+	if host == "" {
+		return false
+	}
+	for _, domain := range list {
+		if host == domain {
+			return true
+		}
+	}
+	return false
 }
 
 func authentication(serverSecret string) func(next http.Handler) http.Handler {

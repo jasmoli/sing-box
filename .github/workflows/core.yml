@@ -69,12 +69,17 @@ jobs:
           add-to-path: false
           local-cache: false
 
+      - name: Get sing-box Version
+        id: sing-box-version
+        run: |
+          echo VERSION=$(CGO_ENABLED=0 GOOS="" GOARCH="" go run ./cmd/internal/read_tag) >> $GITHUB_OUTPUT
+
       - name: Build, Android
         if: env.GOOS == 'android'
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          VERSION: ${{ steps.sing-box-version.outputs.VERSION }}
         run: |
-          VERSION=$(CGO_ENABLED=0 GOOS="" GOARCH="" go run ./cmd/internal/read_tag)
           CC=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
           CGO_ENABLED=1 CC=${CC} GOOS=${GOOS} GOARCH=${GOARCH} go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' -s -w -buildid=" -tags ${TAGS} ./cmd/sing-box
 
@@ -89,14 +94,25 @@ jobs:
           name: sing-box-${{ matrix.name }}
           path: sing-box*
 
-      - name: Post to channel, android-arm64
+      - name: Set Post Info
+        if: env.GOOS == 'android' && env.GOARCH == 'arm64' && contains(github.event.head_commit.message, '(Push)')
+        id: set-post-info
         env:
+          VERSION: ${{ steps.sing-box-version.outputs.VERSION }}
+        run: |
+          {
+            echo 'CONTEXT<<EOF'
+            echo -e "sing-box version ${VERSION}\n\nEnvironment: go${{ steps.version.outputs.go_version }} ${GOOS}/${GOARCH}\nTags: ${TAGS}\nCGO: enabled\n\n合并 SagerNet/sing-box 和 PuerNya/sing-box 的 outbound-providers，其他平台请前往 <a href=\"https://github.com/jasmoli/sing-box/actions/runs/${{ github.run_id }}\">GitHub</a> 下载\n\ncommit: ${{ github.event.head_commit.message }}"
+            echo EOF
+          } >> $GITHUB_OUTPUT
+          echo path="$GITHUB_WORKSPACE/sing-box" >> $GITHUB_OUTPUT
+
+      - name: Post to channel
+        if: env.GOOS == 'android' && env.GOARCH == 'arm64' && contains(github.event.head_commit.message, '(Push)')
+        uses: xireiki/channel-post@v1.0.0
+        with: 
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        if: env.GOOS == 'android' && env.GOARCH == 'arm64' && contains(github.event.head_commit.message, '(Push)')
-        run: |
-          pip install pyTelegramBotAPI
-          path="$GITHUB_WORKSPACE/sing-box"
-          VERSION=$(CGO_ENABLED=0 GOOS="" GOARCH="" go run ./cmd/internal/read_tag)
-          CAPTION=$(echo -e "sing-box version ${VERSION}\n\nEnvironment: go${{ steps.version.outputs.go_version }} ${GOOS}/${GOARCH}\nTags: ${TAGS}\nCGO: enabled\n\n合并 SagerNet/sing-box 和 PuerNya/sing-box 的 outbound-providers，其他平台请前往 <a href=\"https://github.com/jasmoli/sing-box/actions/runs/${{ github.run_id }}\">GitHub</a> 下载\n\ncommit: ${{ github.event.head_commit.message }}")
-          python3 $GITHUB_WORKSPACE/.github/scripts/tg_bot.py "$BOT_TOKEN" "$CHANNEL_ID" "$path" "$CAPTION"
+          path: ${{ steps.set-post-info.outputs.path }}
+          CONTEXT: ${{ steps.set-post-info.outputs.CONTEXT }}
+          PARSE_MODE: HTML

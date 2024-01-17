@@ -1,0 +1,161 @@
+name: Build Core
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      telegram: ${{ steps.set-var.outputs.telegram }}
+    steps:
+      - name: Set Variables
+        id: set-var
+        if: contains(github.event.head_commit.message, '(Push)')
+        run: |
+          echo "telegram=enable" >> $GITHUB_OUTPUT
+
+  build:
+    needs: prepare
+    outputs:
+      singBoxVersion: ${{ steps.singBoxVersion.outputs.version }}
+      goVersion: ${{ steps.version.outputs.go_version }}
+      tags: ${{ env.TAGS }}
+    strategy:
+      matrix:
+        include:
+          # windows
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
+            goamd64: v1
+
+          # linux
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
+            goamd64: v1
+
+          # darwin
+          - name: darwin-amd64
+            goos: darwin
+            goarch: amd64
+            goamd64: v1
+
+          # android
+          - name: android-arm64
+            goos: android
+            goarch: arm64
+      fail-fast: false
+    runs-on: ubuntu-latest
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOAMD64: ${{ matrix.goamd64 }}
+      GOARM: ${{ matrix.goarm }}
+      GOMIPS: ${{ matrix.gomips }}
+      CGO_ENABLED: 0
+      TAGS: with_quic,with_dhcp,with_wireguard,with_shadowsocksr,with_ech,with_utls,with_clash_api,with_v2ray_api,with_gvisor
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest go version
+        id: version
+        run: |
+          echo go_version=$(curl -s https://raw.githubusercontent.com/actions/go-versions/update-versions-manifest-file/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g') >> $GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.version.outputs.go_version }}
+
+      - name: Setup NDK
+        if: matrix.goos == 'android'
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26b
+          add-to-path: false
+          local-cache: false
+
+      - name: Get sing-box Version
+        id: singBoxVersion
+        run: |
+          echo version=$(CGO_ENABLED=0 GOOS="linux" GOARCH="amd64" go run ./cmd/internal/read_tag) >> $GITHUB_OUTPUT
+
+      - name: Build, Android
+        if: env.GOOS == 'android'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          VERSION: ${{ steps.singBoxVersion.outputs.VERSION }}
+        run: |
+          CC=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
+          CGO_ENABLED=1 CC=${CC} GOOS=${GOOS} GOARCH=${GOARCH} go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' -s -w -buildid=" -tags ${TAGS} ./cmd/sing-box
+
+      - name: Build, Others
+        if: env.GOOS != 'android'
+        env:
+          VERSION: ${{ steps.singBoxVersion.outputs.version }}
+        run: |
+          GOOS=${GOOS} GOARCH=${GOARCH} go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' -s -w -buildid=" -tags ${TAGS} ./cmd/sing-box
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-${{ matrix.name }}
+          path: sing-box*
+
+  post:
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - prepare
+    if: ${{ needs.prepare.outputs.telegram == 'enable' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set Post Info
+        if: contains(github.event.head_commit.message, '(Push)')
+        id: set-post-info
+        env:
+          singBoxVersion: ${{ needs.build.outputs.singBoxVersion }}
+          goVersion: ${{ needs.build.outputs.goVersion }}
+          tags: ${{ needs.build.outputs.tags }}
+        run: |
+          {
+            echo 'CONTEXT<<EOF'
+            echo -e "sing-box ${singBoxVersion}\n\nEnvironment: go v${goVersion}\nTags: ${tags}\n\ncommit: ${{ github.event.head_commit.message }}\n$(git log --oneline -n 6 --no-decorate | sed 's/^[0-9a-f]* //' | sed 's/^/ - /' | sed 's/^ - Build.*//')"
+            echo EOF
+          } >> $GITHUB_OUTPUT
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+
+      - name: Rename and Remove Directory
+        run: |
+          mv sing-box-windows-amd64/sing-box.exe sing-box_windows_amd64.exe
+          mv sing-box-linux-amd64/sing-box sing-box_linux_amd64
+          mv sing-box-darwin-amd64/sing-box sing-box_darwin_amd64
+          mv sing-box-android-arm64/sing-box sing-box_android_arm64
+          find . -maxdepth 1 -type d -empty -delete
+
+      - name: Post to channel
+        uses: xireiki/channel-post@v1
+        with: 
+          chat_id: ${{ secrets.CHAT_ID }}
+          bot_token: ${{ secrets.BOT_TOKEN }}
+          path: sing-box_*
+          context: ${{ steps.set-post-info.outputs.CONTEXT }}
+          parse_mode: HTML
+          large_file: true
+          api_id: ${{ secrets.API_ID }}
+          api_hash: ${{ secrets.API_HASH }}
+          method: sendFile

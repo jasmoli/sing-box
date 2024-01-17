@@ -1,0 +1,397 @@
+name: Publish
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.go.outputs.version }}
+    steps:
+      - name: get latest go version
+        id: go
+        run: |
+          echo version=$(curl -s https://raw.githubusercontent.com/actions/go-versions/update-versions-manifest-file/versions-manifest.json | grep -oE '"version": "[0-9]{1}.[0-9]{1,}(.[0-9]{1,})?"' | head -1 | cut -d':' -f2 | sed 's/ //g; s/"//g') >> $GITHUB_OUTPUT
+
+  sing-box:
+    runs-on: ubuntu-latest
+    needs: go
+    outputs:
+      version: ${{ steps.sing-box.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ needs.go.outputs.version }}
+
+      - name: get sing-box version
+        id: sing-box
+        run: |
+          echo version=$(CGO_ENABLED=0 go run ./cmd/internal/read_tag) >> $GITHUB_OUTPUT
+
+  core:
+    runs-on: ubuntu-latest
+    needs:
+      - go
+      - sing-box
+    outputs:
+      tags: ${{ env.TAGS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # windows
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
+            goamd64: v1
+
+          # linux
+          - name: linux-amd64
+            goos: linux
+            goarch: amd64
+            goamd64: v1
+
+          # darwin
+          - name: darwin-amd64
+            goos: darwin
+            goarch: amd64
+            goamd64: v1
+
+          # android
+          - name: android-arm64
+            goos: android
+            goarch: arm64
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOAMD64: ${{ matrix.goamd64 }}
+      CGO_ENABLED: ${{ matrix.goos == 'android' && 1 || 0 }}
+      TAGS: with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,badlinkname,tfogo_checklinkname0,with_ebpf
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ needs.go.outputs.version }}
+
+      - name: Setup NDK
+        if: matrix.goos == 'android'
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r29
+          add-to-path: false
+          local-cache: false
+
+      - name: Build, Android
+        if: env.GOOS == 'android'
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          VERSION: ${{ needs.sing-box.outputs.version }}
+        run: |
+          CC=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android34-clang
+          CGO_ENABLED=1 CC=${CC} GOOS=${GOOS} GOARCH=${GOARCH} go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -s -w -buildid=" -tags ${TAGS} ./cmd/sing-box
+
+      - name: Build, Others
+        if: env.GOOS != 'android'
+        env:
+          VERSION: ${{ needs.sing-box.outputs.version }}
+        run: |
+          GOOS=${GOOS} GOARCH=${GOARCH} go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${VERSION}' -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -s -w -buildid=" -tags ${TAGS} ./cmd/sing-box
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: sing-box-${{ matrix.name }}
+          path: sing-box*
+
+  libbox:
+    runs-on: ubuntu-latest
+    needs:
+      - go
+      - sing-box
+    env:
+      VERSION: ${{ needs.sing-box.outputs.version }}
+      TAGS: &sfa_tags with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_ccm,with_ocm,with_cloudflared,with_usbip,with_openvpn,with_openconnect,badlinkname,tfogo_checklinkname0
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: android/arm64
+            abi: arm64-v8a
+            cc: aarch64-linux-android35-clang
+          - target: android/arm
+            abi: armeabi-v7a
+            cc: armv7a-linux-androideabi35-clang
+          - target: android/amd64
+            abi: x86_64
+            cc: x86_64-linux-android35-clang
+          - target: android/386
+            abi: x86
+            cc: i686-linux-android35-clang
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ needs.go.outputs.version }}
+
+      - name: setup java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: setup ndk
+        uses: nttld/setup-ndk@v1.6.0
+        id: setup-ndk
+        with:
+          ndk-version: r29
+
+      - name: build libbox
+        env:
+          ANDROID_NDK_HOME: ${{steps.setup-ndk.outputs.ndk-path}}
+          CC: ${{steps.setup-ndk.outputs.ndk-path}}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.cc }}
+          CGO_ENABLED: '0'
+        run: |
+          make lib_install
+          make ebpf_generate
+          gomobile bind -target=${{ matrix.target }} -v -a -trimpath -buildvcs=false -androidapi 21 -javapkg=io.nekohasekai -libname=box -tags ${TAGS} -ldflags "-checklinkname=0 -X github.com/sagernet/sing-box/constant.Version=${VERSION} -s -w -buildid=" ./experimental/libbox
+
+      - name: upload libbox
+        uses: actions/upload-artifact@v7
+        with:
+          name: libbox-${{ matrix.abi }}
+          path: libbox.aar
+          if-no-files-found: error
+          compression-level: 0
+
+  sfa:
+    runs-on: ubuntu-latest
+    needs:
+      - go
+      - sing-box
+      - libbox
+    outputs:
+      tags: ${{ env.TAGS }}
+    env:
+      VERSION: ${{ needs.sing-box.outputs.version }}
+      TAGS: *sfa_tags
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ needs.go.outputs.version }}
+
+      - name: checkout app repository
+        uses: actions/checkout@v5
+        with:
+          path: sfa
+          repository: jasmoli/sing-box-for-android
+          ref: 'dev-xireiki'
+          submodules: recursive
+
+      - name: download libbox
+        uses: actions/download-artifact@v8
+        with:
+          pattern: libbox-*
+          path: aar
+
+      - name: merge libbox
+        run: |
+          mkdir -p sfa/app/libs/
+          go run ./cmd/internal/merge_aar -output sfa/app/libs/libbox.aar aar/libbox-*/libbox.aar
+
+      - name: setup java
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: setup ndk
+        uses: nttld/setup-ndk@v1.6.0
+        id: setup-ndk
+        with:
+          ndk-version: r29
+
+      - name: get latest build tools version
+        id: sdk
+        run: echo version=$(ls $ANDROID_HOME/build-tools | tail -n 1) >> $GITHUB_OUTPUT
+
+      - name: setup build env && build app
+        env:
+          KEYSTORE: ${{secrets.SIGN_KEY}}
+          ALIAS_NAME: ${{secrets.ALIAS}}
+          KEYSTORE_PASS: ${{secrets.SIGN_KEY}}
+        run: |
+          cd sfa
+          echo "" >> gradle.properties
+          echo "org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8 -XX:+UseParallelGC" >> gradle.properties
+          echo "org.gradle.caching=true" >> gradle.properties
+          echo "org.gradle.parallel=true" >> gradle.properties
+          echo "android.lint.checkReleaseBuilds=false" >> gradle.properties
+          echo "VERSION_NAME=${VERSION}" > version.properties
+          echo "VERSION_CODE=$(date +%Y%m%d%H)" >> version.properties
+          sed -i '/signingConfig = signingConfigs.getByName("release")/d' app/build.gradle.kts
+          chmod +x ./gradlew
+          ./gradlew :app:clean :app:assembleOtherRelease && ./gradlew --stop
+
+      - name: sign app
+        uses: xireiki/sign-android-release@v2
+        env:
+          BUILD_TOOLS_VERSION: ${{steps.sdk.outputs.version}}
+        with:
+          alias: ${{secrets.ALIAS}}
+          releaseDirectory: sfa/app/build/outputs/apk/other/release
+          signingKeyBase64: ${{secrets.SIGN_KEY}}
+          keyStorePassword: ${{secrets.KEY_STORE_PASSWORD}}
+
+      - name: upload arm64-v8a apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: sfa-${{env.VERSION}}-arm64-v8a
+          path: sfa/app/build/outputs/apk/other/release/*-arm64-v8a-signed.apk
+          compression-level: 9
+
+      - name: upload armeabi-v7a apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: sfa-${{env.VERSION}}-armeabi-v7a
+          path: sfa/app/build/outputs/apk/other/release/*-armeabi-v7a-signed.apk
+          compression-level: 9
+
+      - name: upload x86_64 apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: sfa-${{env.VERSION}}-x86_64
+          path: sfa/app/build/outputs/apk/other/release/*-x86_64-signed.apk
+          compression-level: 9
+
+      - name: upload x86 apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: sfa-${{env.VERSION}}-x86
+          path: sfa/app/build/outputs/apk/other/release/*-x86-signed.apk
+          compression-level: 9
+
+      - name: upload universal apk
+        uses: actions/upload-artifact@v7
+        with:
+          name: sfa-${{env.VERSION}}-universal
+          path: sfa/app/build/outputs/apk/other/release/*-universal-signed.apk
+          compression-level: 9
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - go
+      - sing-box
+      - core
+      - sfa
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set Post Info
+        id: set-post-info
+        env:
+          singBoxVersion: ${{ needs.sing-box.outputs.version }}
+          goVersion: ${{ needs.go.outputs.version }}
+          coreTags: ${{ needs.core.outputs.tags }}
+          sfaTags: ${{ needs.sfa.outputs.tags }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          {
+            echo 'CONTEXT_CORE<<EOF'
+            echo -e "sing-box ${singBoxVersion}\n\nEnvironment: go v${goVersion}\nTags: ${coreTags}\n\ncommit: ${COMMIT_MSG}\n$(git log --oneline -n 12 --no-decorate | sed 's/^[0-9a-f]* //' | sed 's/^/ - /' | sed 's/^ - Build.*//')"
+            echo EOF
+            echo 'CONTEXT_SFA<<EOF'
+            echo -e "sing-box for android ${singBoxVersion}\n\nEnvironment: go v${goVersion}\nTags: ${sfaTags}\n\ncommit: ${COMMIT_MSG}\n$(git log --oneline -n 12 --no-decorate | sed 's/^[0-9a-f]* //' | sed 's/^/ - /' | sed 's/^ - Publish.*//')"
+            echo EOF
+          } >> $GITHUB_OUTPUT
+
+      - name: Download artifact
+        uses: actions/download-artifact@v8
+
+      - name: Rename and Remove Directory
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mv sing-box-windows-amd64/sing-box.exe "sing-box_${TAG}_windows_amd64.exe"
+          mv sing-box-linux-amd64/sing-box "sing-box_${TAG}_linux_amd64"
+          mv sing-box-darwin-amd64/sing-box "sing-box_${TAG}_darwin_amd64"
+          mv sing-box-android-arm64/sing-box "sing-box_${TAG}_android_arm64"
+          find . -name 'SFA-*.apk' -exec mv {} . \;
+          for apk in SFA-*.apk; do
+            abi=$(echo "$apk" | sed -E 's/.*-(arm64-v8a|armeabi-v7a|x86_64|x86|universal)-signed\.apk$/\1/')
+            mv "$apk" "SFA_${TAG}_android_${abi}.apk"
+          done
+          find . -maxdepth 1 -type d -empty -delete
+
+      - name: Generate release notes
+        run: |
+          git log -1 --pretty=%b > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            git log -1 --pretty=%s > release-notes.md
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: release-notes.md
+          prerelease: ${{ contains(needs.sing-box.outputs.version, 'alpha') || contains(needs.sing-box.outputs.version, 'beta') || contains(needs.sing-box.outputs.version, 'rc') }}
+          files: |
+            sing-box_*
+            SFA_*
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Post core to channel
+        uses: xireiki/channel-post@v2
+        with:
+          chat_id: ${{ secrets.CHAT_ID }}
+          bot_token: ${{ secrets.BOT_TOKEN }}
+          path: sing-box_*
+          context: ${{ steps.set-post-info.outputs.CONTEXT_CORE }}
+          parse_mode: HTML
+          large_file: true
+          api_id: ${{ secrets.API_ID }}
+          api_hash: ${{ secrets.API_HASH }}
+          method: sendFile
+
+      - name: Post SFA to channel
+        uses: xireiki/channel-post@v2
+        with:
+          chat_id: ${{ secrets.CHAT_ID }}
+          bot_token: ${{ secrets.BOT_TOKEN }}
+          path: SFA_*
+          context: ${{ steps.set-post-info.outputs.CONTEXT_SFA }}
+          parse_mode: HTML
+          large_file: true
+          api_id: ${{ secrets.API_ID }}
+          api_hash: ${{ secrets.API_HASH }}
+          method: sendFile

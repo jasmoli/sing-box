@@ -14,7 +14,7 @@ func NewDNSRule(router adapter.Router, logger log.ContextLogger, options option.
 		if !options.DefaultOptions.IsValid() {
 			return nil, E.New("missing conditions")
 		}
-		if options.DefaultOptions.Server == "" && checkServer {
+		if len(options.DefaultOptions.Server) == 0 && checkServer {
 			return nil, E.New("missing server field")
 		}
 		return NewDefaultDNSRule(router, logger, options.DefaultOptions)
@@ -22,7 +22,7 @@ func NewDNSRule(router adapter.Router, logger log.ContextLogger, options option.
 		if !options.LogicalOptions.IsValid() {
 			return nil, E.New("missing conditions")
 		}
-		if options.LogicalOptions.Server == "" && checkServer {
+		if len(options.LogicalOptions.Server) == 0 && checkServer {
 			return nil, E.New("missing server field")
 		}
 		return NewLogicalDNSRule(router, logger, options.LogicalOptions)
@@ -35,18 +35,23 @@ var _ adapter.DNSRule = (*DefaultDNSRule)(nil)
 
 type DefaultDNSRule struct {
 	abstractDefaultRule
+	router       adapter.Router
 	disableCache bool
 	rewriteTTL   *uint32
+	servers      []string
 }
 
 func NewDefaultDNSRule(router adapter.Router, logger log.ContextLogger, options option.DefaultDNSRule) (*DefaultDNSRule, error) {
 	rule := &DefaultDNSRule{
 		abstractDefaultRule: abstractDefaultRule{
-			invert:   options.Invert,
-			outbound: options.Server,
+			abstractRule: abstractRule{
+				invert: options.Invert,
+			},
 		},
+		router: router,
 		disableCache: options.DisableCache,
 		rewriteTTL:   options.RewriteTTL,
+		servers:      options.Server,
 	}
 	if len(options.Inbound) > 0 {
 		item := NewInboundRule(options.Inbound)
@@ -211,23 +216,32 @@ func (r *DefaultDNSRule) RewriteTTL() *uint32 {
 	return r.rewriteTTL
 }
 
+func (r *DefaultDNSRule) Servers() []string {
+	return r.servers
+}
+
 var _ adapter.DNSRule = (*LogicalDNSRule)(nil)
 
 type LogicalDNSRule struct {
 	abstractLogicalRule
+	router       adapter.Router
 	disableCache bool
 	rewriteTTL   *uint32
+	servers      []string
 }
 
 func NewLogicalDNSRule(router adapter.Router, logger log.ContextLogger, options option.LogicalDNSRule) (*LogicalDNSRule, error) {
 	r := &LogicalDNSRule{
 		abstractLogicalRule: abstractLogicalRule{
-			rules:    make([]adapter.HeadlessRule, len(options.Rules)),
-			invert:   options.Invert,
-			outbound: options.Server,
+			abstractRule: abstractRule{
+				invert: options.Invert,
+			},
+			rules: make([]adapter.HeadlessRule, len(options.Rules)),
 		},
+		router: router,
 		disableCache: options.DisableCache,
 		rewriteTTL:   options.RewriteTTL,
+		servers:      options.Server,
 	}
 	switch options.Mode {
 	case C.LogicalTypeAnd:
@@ -253,4 +267,8 @@ func (r *LogicalDNSRule) DisableCache() bool {
 
 func (r *LogicalDNSRule) RewriteTTL() *uint32 {
 	return r.rewriteTTL
+}
+
+func (r *LogicalDNSRule) Servers() []string {
+	return r.servers
 }

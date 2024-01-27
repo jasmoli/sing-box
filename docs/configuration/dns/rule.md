@@ -105,7 +105,22 @@ icon: material/alert-decagram
         "outbound": [
           "direct"
         ],
-        "server": "local",
+        "fallback_rule": {
+          "ipcidr": [
+            "10.0.0.0/24"
+          ],
+          "geoip": [
+            "cn"
+          ],
+          "rule_set": [
+            "geoip-cn"
+          ],
+          "ip_is_private": false,
+          "invert": false
+        },
+        "server": [
+          "local"
+        ],
         "disable_cache": false,
         "rewrite_ttl": 100
       },
@@ -113,7 +128,10 @@ icon: material/alert-decagram
         "type": "logical",
         "mode": "and",
         "rules": [],
-        "server": "local",
+        "fallback_rule": {},
+        "server": [
+          "local"
+        ],
         "disable_cache": false,
         "rewrite_ttl": 100
       }
@@ -302,7 +320,9 @@ Match outbound.
 
 ==Required==
 
-Tag of the target dns server.
+List of target dns server tag.
+
+When the count of list is greater than one, concurrent requests to all dns servers and take the fastest non-empty response.
 
 #### disable_cache
 

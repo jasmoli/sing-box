@@ -24,6 +24,8 @@ type Router interface {
 	Outbound(tag string) (Outbound, bool)
 	DefaultOutbound(network string) (Outbound, error)
 
+	Transport(tag string) (dns.Transport, bool)
+
 	FakeIPStore() FakeIPStore
 
 	ConnectionRouter
@@ -86,6 +88,7 @@ type DNSRule interface {
 	Rule
 	DisableCache() bool
 	RewriteTTL() *uint32
+	Servers() []string
 }
 
 type RuleSet interface {

@@ -97,7 +97,7 @@ type DefaultDNSRule struct {
 	WIFIBSSID         Listable[string]       `json:"wifi_bssid,omitempty"`
 	RuleSet           Listable[string]       `json:"rule_set,omitempty"`
 	Invert            bool                   `json:"invert,omitempty"`
-	Server            string                 `json:"server,omitempty"`
+	Server            Listable[string]       `json:"server,omitempty"`
 	DisableCache      bool                   `json:"disable_cache,omitempty"`
 	RewriteTTL        *uint32                `json:"rewrite_ttl,omitempty"`
 	ClientSubnet      *ListenAddress         `json:"client_subnet,omitempty"`
@@ -114,12 +114,12 @@ func (r DefaultDNSRule) IsValid() bool {
 }
 
 type LogicalDNSRule struct {
-	Mode         string         `json:"mode"`
-	Rules        []DNSRule      `json:"rules,omitempty"`
-	Invert       bool           `json:"invert,omitempty"`
-	Server       string         `json:"server,omitempty"`
-	DisableCache bool           `json:"disable_cache,omitempty"`
-	RewriteTTL   *uint32        `json:"rewrite_ttl,omitempty"`
+	Mode         string           `json:"mode"`
+	Rules        []DNSRule        `json:"rules,omitempty"`
+	Invert       bool             `json:"invert,omitempty"`
+	Server       Listable[string] `json:"server,omitempty"`
+	DisableCache bool             `json:"disable_cache,omitempty"`
+	RewriteTTL   *uint32          `json:"rewrite_ttl,omitempty"`
 	ClientSubnet *ListenAddress `json:"client_subnet,omitempty"`
 }
 

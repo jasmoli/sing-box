@@ -120,7 +120,9 @@ icon: material/new-box
         "outbound": [
           "direct"
         ],
-        "server": "local",
+        "server": [
+          "local"
+        ],
         "disable_cache": false,
         "rewrite_ttl": 100,
         "client_subnet": "127.0.0.1"
@@ -129,7 +131,9 @@ icon: material/new-box
         "type": "logical",
         "mode": "and",
         "rules": [],
-        "server": "local",
+        "server": [
+          "local"
+        ],
         "disable_cache": false,
         "rewrite_ttl": 100,
         "client_subnet": "127.0.0.1"
@@ -317,7 +321,9 @@ Match outbound.
 
 ==Required==
 
-Tag of the target dns server.
+List of target dns server tag.
+
+When the count of list is greater than one, concurrent requests to all dns servers and take the fastest non-empty response.
 
 #### disable_cache
 

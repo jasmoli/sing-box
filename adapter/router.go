@@ -24,6 +24,8 @@ type Router interface {
 	Outbound(tag string) (Outbound, bool)
 	DefaultOutbound(network string) (Outbound, error)
 
+	Transport(tag string) (dns.Transport, bool)
+
 	FakeIPStore() FakeIPStore
 
 	ConnectionRouter
@@ -51,6 +53,10 @@ type Router interface {
 	PackageManager() tun.PackageManager
 	WIFIState() WIFIState
 	Rules() []Rule
+	Rule(uuid string) (Rule, bool)
+	DNSRules() []DNSRule
+	DNSRule(uuid string) (DNSRule, bool)
+	DefaultDNSServers() []string
 
 	ClashServer() ClashServer
 	SetClashServer(server ClashServer)
@@ -76,6 +82,9 @@ type HeadlessRule interface {
 type Rule interface {
 	HeadlessRule
 	Service
+	Disabled() bool
+	UUID() string
+	ChangeStatus()
 	Type() string
 	UpdateGeosite() error
 	Outbound() string
@@ -89,6 +98,7 @@ type DNSRule interface {
 	ClientSubnet() *netip.Addr
 	WithAddressLimit() bool
 	MatchAddressLimit(metadata *InboundContext) bool
+	Servers() []string
 }
 
 type RuleSet interface {

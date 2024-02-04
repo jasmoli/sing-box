@@ -2,13 +2,13 @@ package route
 
 import (
 	"context"
-	"errors"
 	"net/netip"
 	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common/cache"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -37,56 +37,166 @@ func (m *DNSReverseMapping) Query(address netip.Addr) (string, bool) {
 	return domain, loaded
 }
 
-func (r *Router) matchDNS(ctx context.Context, allowFakeIP bool, index int) (context.Context, dns.Transport, dns.DomainStrategy, adapter.DNSRule, int) {
+func (r *Router) lookupMulitServer(ctx context.Context, domain string, transports []dns.Transport, fStrategy dns.DomainStrategy) ([]netip.Addr, error) {
+	length := len(transports)
+	addrsChan := make(chan []netip.Addr, length)
+	errChan := make(chan error, length)
+	for _, transport := range transports {
+		strategy := r.defaultDomainStrategy
+		if domainStrategy, dsLoaded := r.transportDomainStrategy[transport]; dsLoaded {
+			strategy = domainStrategy
+		}
+		if fStrategy != dns.DomainStrategyAsIS {
+			strategy = fStrategy
+		}
+		go func(transport dns.Transport, strategy dns.DomainStrategy) {
+			ctx, cancel := context.WithTimeout(ctx, C.DNSTimeout)
+			defer cancel()
+			addrs, err := r.dnsClient.Lookup(ctx, transport, domain, strategy)
+			if len(addrs) > 0 {
+				r.dnsLogger.InfoContext(ctx, "lookup succeed for ", domain, ": ", strings.Join(F.MapToString(addrs), " "))
+			} else if err != nil {
+				r.dnsLogger.ErrorContext(ctx, E.Cause(err, "lookup failed for ", domain))
+			} else {
+				r.dnsLogger.ErrorContext(ctx, "lookup failed for ", domain, ": empty result")
+				err = dns.RCodeNameError
+			}
+			addrsChan <- addrs
+			errChan <- err
+		}(transport, strategy)
+	}
+	var err error
+	for i := 0; i < length; i++ {
+		addrs := <-addrsChan
+		errr := <-errChan
+		if errr == nil {
+			return addrs, errr
+		}
+		if errr != context.DeadlineExceeded || err == nil {
+			err = errr
+		}
+		if errr == context.DeadlineExceeded {
+			break
+		}
+	}
+	return nil, err
+}
+
+func buildFallbackMetadata(addresses []netip.Addr) *adapter.InboundContext {
+	return &adapter.InboundContext{
+		Destination: M.Socksaddr{
+			Fqdn: "a.b.c",
+			Port: 80,
+		},
+		DestinationAddresses: addresses,
+	}
+}
+
+func (r *Router) getRequestMulitServer(ctx context.Context, transports []dns.Transport, message *mDNS.Msg) (*mDNS.Msg, error) {
+	length := len(transports)
+	resChan := make(chan *mDNS.Msg, length)
+	errChan := make(chan error, length)
+	for _, transport := range transports {
+		strategy := r.defaultDomainStrategy
+		if domainStrategy, dsLoaded := r.transportDomainStrategy[transport]; dsLoaded {
+			strategy = domainStrategy
+		}
+		go func(transport dns.Transport, strategy dns.DomainStrategy) {
+			ctx, cancel := context.WithTimeout(ctx, C.DNSTimeout)
+			defer cancel()
+			response, err := r.dnsClient.Exchange(ctx, transport, message, strategy)
+			if err != nil && len(message.Question) > 0 {
+				r.dnsLogger.ErrorContext(ctx, E.Cause(err, "exchange failed for ", formatQuestion(message.Question[0].String())))
+			}
+			if len(message.Question) > 0 && response != nil {
+				LogDNSAnswers(r.dnsLogger, ctx, message.Question[0].Name, response.Answer)
+			}
+			resChan <- response
+			errChan <- err
+		}(transport, strategy)
+	}
+	var response *mDNS.Msg
+	var err error
+	for i := 0; i < length; i++ {
+		resp := <-resChan
+		errr := <-errChan
+		if errr != context.DeadlineExceeded || err == nil {
+			response = resp
+			err = errr
+		}
+		if err == nil || errr == context.DeadlineExceeded {
+			break
+		}
+	}
+	return response, err
+}
+
+func (r *Router) matchDNS0(ctx context.Context, fStrategy dns.DomainStrategy) ([]netip.Addr, error) {
 	metadata := adapter.ContextFrom(ctx)
 	if metadata == nil {
 		panic("no context")
 	}
-	if index < len(r.dnsRules) {
-		dnsRules := r.dnsRules
-		if index != -1 {
-			dnsRules = dnsRules[index+1:]
-		}
-		for ruleIndex, rule := range dnsRules {
-			metadata.ResetRuleCache()
-			if rule.Match(metadata) {
-				detour := rule.Outbound()
-				transport, loaded := r.transportMap[detour]
-				if !loaded {
-					r.dnsLogger.ErrorContext(ctx, "transport not found: ", detour)
-					continue
-				}
-				_, isFakeIP := transport.(adapter.FakeIPTransport)
-				if isFakeIP && !allowFakeIP {
-					continue
-				}
-				displayRuleIndex := ruleIndex
-				if index != -1 {
-					displayRuleIndex += index + 1
-				}
-				r.dnsLogger.DebugContext(ctx, "match[", displayRuleIndex, "] ", rule.String(), " => ", detour)
-				if (isFakeIP && !r.dnsIndependentCache) || rule.DisableCache() {
-					ctx = dns.ContextWithDisableCache(ctx, true)
-				}
-				if rewriteTTL := rule.RewriteTTL(); rewriteTTL != nil {
-					ctx = dns.ContextWithRewriteTTL(ctx, *rewriteTTL)
-				}
-				if clientSubnet := rule.ClientSubnet(); clientSubnet != nil {
-					ctx = dns.ContextWithClientSubnet(ctx, *clientSubnet)
-				}
-				if domainStrategy, dsLoaded := r.transportDomainStrategy[transport]; dsLoaded {
-					return ctx, transport, domainStrategy, rule, ruleIndex
-				} else {
-					return ctx, transport, r.defaultDomainStrategy, rule, ruleIndex
-				}
+	defer metadata.ResetRuleCache()
+	for i, rule := range r.dnsRules {
+		metadata.ResetRuleCache()
+		if rule.Match(metadata) {
+			var transports []dns.Transport
+			servers := rule.Servers()
+			for _, server := range servers {
+				transport := r.transportMap[server]
+				transports = append(transports, transport)
 			}
+			if _, isFakeIP := transports[0].(adapter.FakeIPTransport); isFakeIP {
+				continue
+			}
+			targetServer := servers[0]
+			if len(servers) > 1 {
+				targetServer = "[" + strings.Join(servers, ", ") + "]"
+			}
+			r.dnsLogger.DebugContext(ctx, "match[", i, "] ", rule.String(), " => ", targetServer)
+			if rule.DisableCache() {
+				ctx = dns.ContextWithDisableCache(ctx, true)
+			}
+			if rewriteTTL := rule.RewriteTTL(); rewriteTTL != nil {
+				ctx = dns.ContextWithRewriteTTL(ctx, *rewriteTTL)
+			}
+			addrs, err := r.lookupMulitServer(ctx, metadata.Domain, transports, fStrategy)
+			return addrs, err
 		}
 	}
-	if domainStrategy, dsLoaded := r.transportDomainStrategy[r.defaultTransport]; dsLoaded {
-		return ctx, r.defaultTransport, domainStrategy, nil, -1
-	} else {
-		return ctx, r.defaultTransport, r.defaultDomainStrategy, nil, -1
+	return r.lookupMulitServer(ctx, metadata.Domain, r.defaultTransports, fStrategy)
+}
+
+func (r *Router) matchDNS1(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	metadata := adapter.ContextFrom(ctx)
+	if metadata == nil {
+		panic("no context")
 	}
+	for i, rule := range r.dnsRules {
+		metadata.ResetRuleCache()
+		if rule.Match(metadata) {
+			var transports []dns.Transport
+			servers := rule.Servers()
+			for _, server := range servers {
+				transport := r.transportMap[server]
+				transports = append(transports, transport)
+			}
+			targetServer := servers[0]
+			if len(servers) > 1 {
+				targetServer = "[" + strings.Join(servers, ", ") + "]"
+			}
+			r.dnsLogger.DebugContext(ctx, "match[", i, "] ", rule.String(), " => ", targetServer)
+			if rule.DisableCache() {
+				ctx = dns.ContextWithDisableCache(ctx, true)
+			}
+			if rewriteTTL := rule.RewriteTTL(); rewriteTTL != nil {
+				ctx = dns.ContextWithRewriteTTL(ctx, *rewriteTTL)
+			}
+			response, err := r.getRequestMulitServer(ctx, transports, message)
+			return response, err
+		}
+	}
+	return r.getRequestMulitServer(ctx, r.defaultTransports, message)
 }
 
 func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -94,76 +204,13 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 		r.dnsLogger.DebugContext(ctx, "exchange ", formatQuestion(message.Question[0].String()))
 	}
 	var (
-		response  *mDNS.Msg
-		cached    bool
-		transport dns.Transport
-		err       error
+		response *mDNS.Msg
+		cached   bool
+		isFakeIP bool
+		err      error
 	)
-	response, cached = r.dnsClient.ExchangeCache(ctx, message)
-	if !cached {
-		var metadata *adapter.InboundContext
-		ctx, metadata = adapter.AppendContext(ctx)
-		if len(message.Question) > 0 {
-			metadata.QueryType = message.Question[0].Qtype
-			switch metadata.QueryType {
-			case mDNS.TypeA:
-				metadata.IPVersion = 4
-			case mDNS.TypeAAAA:
-				metadata.IPVersion = 6
-			}
-			metadata.Domain = fqdnToDomain(message.Question[0].Name)
-		}
-		var (
-			strategy  dns.DomainStrategy
-			rule      adapter.DNSRule
-			ruleIndex int
-		)
-		ruleIndex = -1
-		for {
-			var (
-				dnsCtx       context.Context
-				cancel       context.CancelFunc
-				addressLimit bool
-			)
-
-			dnsCtx, transport, strategy, rule, ruleIndex = r.matchDNS(ctx, true, ruleIndex)
-			dnsCtx, cancel = context.WithTimeout(dnsCtx, C.DNSTimeout)
-			if rule != nil && rule.WithAddressLimit() && isAddressQuery(message) {
-				addressLimit = true
-				response, err = r.dnsClient.ExchangeWithResponseCheck(dnsCtx, transport, message, strategy, func(response *mDNS.Msg) bool {
-					metadata.DestinationAddresses, _ = dns.MessageToAddresses(response)
-					return rule.MatchAddressLimit(metadata)
-				})
-			} else {
-				addressLimit = false
-				response, err = r.dnsClient.Exchange(dnsCtx, transport, message, strategy)
-			}
-			cancel()
-			var rejected bool
-			if err != nil {
-				if errors.Is(err, dns.ErrResponseRejectedCached) {
-					rejected = true
-					r.dnsLogger.DebugContext(ctx, E.Cause(err, "response rejected for ", formatQuestion(message.Question[0].String())), " (cached)")
-				} else if errors.Is(err, dns.ErrResponseRejected) {
-					rejected = true
-					r.dnsLogger.DebugContext(ctx, E.Cause(err, "response rejected for ", formatQuestion(message.Question[0].String())))
-				} else if len(message.Question) > 0 {
-					r.dnsLogger.ErrorContext(ctx, E.Cause(err, "exchange failed for ", formatQuestion(message.Question[0].String())))
-				} else {
-					r.dnsLogger.ErrorContext(ctx, E.Cause(err, "exchange failed for <empty query>"))
-				}
-			}
-			if addressLimit && rejected {
-				continue
-			}
-			break
-		}
-	}
-	if err != nil {
-		return nil, err
-	}
-	if r.dnsReverseMapping != nil && len(message.Question) > 0 && response != nil && len(response.Answer) > 0 {
-		if _, isFakeIP := transport.(adapter.FakeIPTransport); !isFakeIP {
+	defer func() {
+		if r.dnsReverseMapping != nil && !isFakeIP && len(message.Question) > 0 && response != nil && len(response.Answer) > 0 {
 			for _, answer := range response.Answer {
 				switch record := answer.(type) {
 				case *mDNS.A:
@@ -173,15 +220,32 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 				}
 			}
 		}
+	}()
+	if response, cached = r.dnsClient.ExchangeCache(ctx, message); cached {
+		if len(message.Question) > 0 && response != nil {
+			LogDNSAnswers(r.dnsLogger, ctx, message.Question[0].Name, response.Answer)
+		}
+		return response, nil
 	}
-	return response, nil
+	ctx, metadata := adapter.AppendContext(ctx)
+	if len(message.Question) > 0 {
+		metadata.QueryType = message.Question[0].Qtype
+		switch metadata.QueryType {
+		case mDNS.TypeA:
+			metadata.IPVersion = 4
+		case mDNS.TypeAAAA:
+			metadata.IPVersion = 6
+		}
+		metadata.Domain = fqdnToDomain(message.Question[0].Name)
+	}
+	response, err = r.matchDNS1(ctx, message)
+	return response, err
 }
 
 func (r *Router) Lookup(ctx context.Context, domain string, strategy dns.DomainStrategy) ([]netip.Addr, error) {
 	var (
 		responseAddrs []netip.Addr
 		cached        bool
-		err           error
 	)
 	responseAddrs, cached = r.dnsClient.LookupCache(ctx, domain, strategy)
 	if cached {
@@ -190,57 +254,7 @@ func (r *Router) Lookup(ctx context.Context, domain string, strategy dns.DomainS
 	r.dnsLogger.DebugContext(ctx, "lookup domain ", domain)
 	ctx, metadata := adapter.AppendContext(ctx)
 	metadata.Domain = domain
-	var (
-		transport         dns.Transport
-		transportStrategy dns.DomainStrategy
-		rule              adapter.DNSRule
-		ruleIndex         int
-	)
-	ruleIndex = -1
-	for {
-		var (
-			dnsCtx       context.Context
-			cancel       context.CancelFunc
-			addressLimit bool
-		)
-		metadata.ResetRuleCache()
-		metadata.DestinationAddresses = nil
-		dnsCtx, transport, transportStrategy, rule, ruleIndex = r.matchDNS(ctx, false, ruleIndex)
-		if strategy == dns.DomainStrategyAsIS {
-			strategy = transportStrategy
-		}
-		dnsCtx, cancel = context.WithTimeout(dnsCtx, C.DNSTimeout)
-		if rule != nil && rule.WithAddressLimit() {
-			addressLimit = true
-			responseAddrs, err = r.dnsClient.LookupWithResponseCheck(dnsCtx, transport, domain, strategy, func(responseAddrs []netip.Addr) bool {
-				metadata.DestinationAddresses = responseAddrs
-				return rule.MatchAddressLimit(metadata)
-			})
-		} else {
-			addressLimit = false
-			responseAddrs, err = r.dnsClient.Lookup(dnsCtx, transport, domain, strategy)
-		}
-		cancel()
-		if err != nil {
-			if errors.Is(err, dns.ErrResponseRejectedCached) {
-				r.dnsLogger.DebugContext(ctx, "response rejected for ", domain, " (cached)")
-			} else if errors.Is(err, dns.ErrResponseRejected) {
-				r.dnsLogger.DebugContext(ctx, "response rejected for ", domain)
-			} else {
-				r.dnsLogger.ErrorContext(ctx, E.Cause(err, "lookup failed for ", domain))
-			}
-		} else if len(responseAddrs) == 0 {
-			r.dnsLogger.ErrorContext(ctx, "lookup failed for ", domain, ": empty result")
-			err = dns.RCodeNameError
-		}
-		if !addressLimit || err == nil {
-			break
-		}
-	}
-	if len(responseAddrs) > 0 {
-		r.dnsLogger.InfoContext(ctx, "lookup succeed for ", domain, ": ", strings.Join(F.MapToString(responseAddrs), " "))
-	}
-	return responseAddrs, err
+	return r.matchDNS0(ctx, strategy)
 }
 
 func (r *Router) LookupDefault(ctx context.Context, domain string) ([]netip.Addr, error) {
@@ -251,6 +265,12 @@ func (r *Router) ClearDNSCache() {
 	r.dnsClient.ClearCache()
 	if r.platformInterface != nil {
 		r.platformInterface.ClearDNSCache()
+	}
+}
+
+func LogDNSAnswers(logger log.ContextLogger, ctx context.Context, domain string, answers []mDNS.RR) {
+	for _, answer := range answers {
+		logger.InfoContext(ctx, "exchanged ", domain, " ", mDNS.Type(answer.Header().Rrtype).String(), " ", formatQuestion(answer.String()))
 	}
 }
 

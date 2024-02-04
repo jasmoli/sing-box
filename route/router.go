@@ -58,6 +58,7 @@ type Router struct {
 	outbounds                          []adapter.Outbound
 	outboundByTag                      map[string]adapter.Outbound
 	rules                              []adapter.Rule
+	routeRuleByUUID                    map[string]adapter.Rule
 	defaultDetour                      string
 	defaultOutboundForConnection       adapter.Outbound
 	defaultOutboundForPacketConnection adapter.Outbound
@@ -73,9 +74,10 @@ type Router struct {
 	dnsIndependentCache                bool
 	defaultDomainStrategy              dns.DomainStrategy
 	dnsRules                           []adapter.DNSRule
+	dnsRuleByUUID                      map[string]adapter.DNSRule
 	ruleSets                           []adapter.RuleSet
 	ruleSetMap                         map[string]adapter.RuleSet
-	defaultTransport                   dns.Transport
+	defaultTransports                  []dns.Transport
 	transports                         []dns.Transport
 	transportMap                       map[string]dns.Transport
 	transportDomainStrategy            map[dns.Transport]dns.DomainStrategy
@@ -116,7 +118,9 @@ func NewRouter(
 		dnsLogger:             logFactory.NewLogger("dns"),
 		outboundByTag:         make(map[string]adapter.Outbound),
 		rules:                 make([]adapter.Rule, 0, len(options.Rules)),
+		routeRuleByUUID:       make(map[string]adapter.Rule),
 		dnsRules:              make([]adapter.DNSRule, 0, len(dnsOptions.Rules)),
+		dnsRuleByUUID:         make(map[string]adapter.DNSRule),
 		ruleSetMap:            make(map[string]adapter.RuleSet),
 		needGeoIPDatabase:     hasRule(options.Rules, isGeoIPRule) || hasDNSRule(dnsOptions.Rules, isGeoIPDNSRule),
 		needGeositeDatabase:   hasRule(options.Rules, isGeositeRule) || hasDNSRule(dnsOptions.Rules, isGeositeDNSRule),
@@ -158,14 +162,18 @@ func NewRouter(
 		if err != nil {
 			return nil, E.Cause(err, "parse rule[", i, "]")
 		}
+		uuid := routeRule.UUID()
 		router.rules = append(router.rules, routeRule)
+		router.routeRuleByUUID[uuid] = routeRule
 	}
 	for i, dnsRuleOptions := range dnsOptions.Rules {
 		dnsRule, err := NewDNSRule(router, router.logger, dnsRuleOptions, true)
 		if err != nil {
 			return nil, E.Cause(err, "parse dns rule[", i, "]")
 		}
+		uuid := dnsRule.UUID()
 		router.dnsRules = append(router.dnsRules, dnsRule)
+		router.dnsRuleByUUID[uuid] = dnsRule
 	}
 	for i, ruleSetOptions := range options.RuleSet {
 		if _, exists := router.ruleSetMap[ruleSetOptions.Tag]; exists {
@@ -281,14 +289,17 @@ func NewRouter(
 		}
 		return nil, E.New("found circular reference in dns servers: ", strings.Join(unresolvedTags, " "))
 	}
-	var defaultTransport dns.Transport
-	if dnsOptions.Final != "" {
-		defaultTransport = dummyTransportMap[dnsOptions.Final]
-		if defaultTransport == nil {
-			return nil, E.New("default dns server not found: ", dnsOptions.Final)
+	var defaultTransports []dns.Transport
+	if len(dnsOptions.Final) > 0 {
+		for i, server := range dnsOptions.Final {
+			transport := dummyTransportMap[server]
+			if transport == nil {
+				return nil, E.New("default dns server[", i, "] not found: ", server)
+			}
+			defaultTransports = append(defaultTransports, transport)
 		}
 	}
-	if defaultTransport == nil {
+	if len(defaultTransports) == 0 {
 		if len(transports) == 0 {
 			transports = append(transports, common.Must1(dns.CreateTransport(dns.TransportOptions{
 				Context: ctx,
@@ -297,12 +308,14 @@ func NewRouter(
 				Dialer:  common.Must1(dialer.NewDefault(router, option.DialerOptions{})),
 			})))
 		}
-		defaultTransport = transports[0]
+		defaultTransports = append(defaultTransports, transports[0])
 	}
-	if _, isFakeIP := defaultTransport.(adapter.FakeIPTransport); isFakeIP {
-		return nil, E.New("default DNS server cannot be fakeip")
+	for _, server := range defaultTransports {
+		if _, isFakeIP := server.(adapter.FakeIPTransport); isFakeIP {
+			return nil, E.New("default dns servers cannot be fakeip")
+		}
 	}
-	router.defaultTransport = defaultTransport
+	router.defaultTransports = defaultTransports
 	router.transports = transports
 	router.transportMap = transportMap
 	router.transportDomainStrategy = transportDomainStrategy
@@ -460,6 +473,11 @@ func (r *Router) Outbounds() []adapter.Outbound {
 		return nil
 	}
 	return r.outbounds
+}
+
+func (r *Router) Transport(tag string) (dns.Transport, bool) {
+	transport, loaded := r.transportMap[tag]
+	return transport, loaded
 }
 
 func (r *Router) PreStart() error {
@@ -648,6 +666,19 @@ func (r *Router) Start() error {
 		monitor.Finish()
 		if err != nil {
 			return E.Cause(err, "initialize DNS server[", i, "]")
+		}
+	}
+	for _, transport := range r.defaultTransports {
+		if _, isRCode := transport.(*dns.RCodeTransport); isRCode && len(r.defaultTransports) > 1 {
+			return E.New("initialize default dns servers failed: rcode server can only be used stand-alone")
+		}
+	}
+	for i, rule := range r.dnsRules {
+		monitor.Start("initialize DNS rule[", i, "]")
+		err := rule.Start()
+		monitor.Finish()
+		if err != nil {
+			return E.Cause(err, "initialize DNS rule[", i, "]")
 		}
 	}
 	if r.timeService != nil {
@@ -1149,6 +1180,28 @@ func (r *Router) DefaultMark() int {
 
 func (r *Router) Rules() []adapter.Rule {
 	return r.rules
+}
+
+func (r *Router) Rule(uuid string) (adapter.Rule, bool) {
+	rule, exists := r.routeRuleByUUID[uuid]
+	return rule, exists
+}
+
+func (r *Router) DNSRules() []adapter.DNSRule {
+	return r.dnsRules
+}
+
+func (r *Router) DNSRule(uuid string) (adapter.DNSRule, bool) {
+	rule, exists := r.dnsRuleByUUID[uuid]
+	return rule, exists
+}
+
+func (r *Router) DefaultDNSServers() []string {
+	var servers []string
+	for _, server := range r.defaultTransports {
+		servers = append(servers, server.Name())
+	}
+	return servers
 }
 
 func (r *Router) WIFIState() adapter.WIFIState {

@@ -37,7 +37,7 @@ func (m *DNSReverseMapping) Query(address netip.Addr) (string, bool) {
 	return domain, loaded
 }
 
-func (r *Router) matchDNS(ctx context.Context, allowFakeIP bool, index int, isAddressQuery bool) (context.Context, dns.Transport, dns.DomainStrategy, adapter.DNSRule, int) {
+func (r *Router) matchDNS(ctx context.Context, allowFakeIP bool, index int, isAddressQuery bool) (context.Context, dns.Transport, dns.DomainStrategy, adapter.DNSRule, int, bool) {
 	metadata := adapter.ContextFrom(ctx)
 	if metadata == nil {
 		panic("no context")
@@ -78,17 +78,17 @@ func (r *Router) matchDNS(ctx context.Context, allowFakeIP bool, index int, isAd
 					ctx = dns.ContextWithClientSubnet(ctx, *clientSubnet)
 				}
 				if domainStrategy, dsLoaded := r.transportDomainStrategy[transport]; dsLoaded {
-					return ctx, transport, domainStrategy, rule, ruleIndex
+					return ctx, transport, domainStrategy, rule, ruleIndex, isFakeIP
 				} else {
-					return ctx, transport, r.defaultDomainStrategy, rule, ruleIndex
+					return ctx, transport, r.defaultDomainStrategy, rule, ruleIndex, isFakeIP
 				}
 			}
 		}
 	}
 	if domainStrategy, dsLoaded := r.transportDomainStrategy[r.defaultTransport]; dsLoaded {
-		return ctx, r.defaultTransport, domainStrategy, nil, -1
+		return ctx, r.defaultTransport, domainStrategy, nil, -1, false
 	} else {
-		return ctx, r.defaultTransport, r.defaultDomainStrategy, nil, -1
+		return ctx, r.defaultTransport, r.defaultDomainStrategy, nil, -1, false
 	}
 }
 
@@ -99,6 +99,7 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 	var (
 		response  *mDNS.Msg
 		cached    bool
+		isFakeIP  bool
 		transport dns.Transport
 		err       error
 	)
@@ -129,7 +130,7 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 				addressLimit bool
 			)
 
-			dnsCtx, transport, strategy, rule, ruleIndex = r.matchDNS(ctx, true, ruleIndex, isAddressQuery(message))
+			dnsCtx, transport, strategy, rule, ruleIndex, isFakeIP = r.matchDNS(ctx, true, ruleIndex, isAddressQuery(message))
 			dnsCtx, cancel = context.WithTimeout(dnsCtx, C.DNSTimeout)
 			if rule != nil && rule.WithAddressLimit() {
 				addressLimit = true
@@ -165,7 +166,7 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, er
 	if err != nil {
 		return nil, err
 	}
-	if r.dnsReverseMapping != nil && len(message.Question) > 0 && response != nil && len(response.Answer) > 0 {
+	if !isFakeIP && r.dnsReverseMapping != nil && len(message.Question) > 0 && response != nil && len(response.Answer) > 0 {
 		if _, isFakeIP := transport.(adapter.FakeIPTransport); !isFakeIP {
 			for _, answer := range response.Answer {
 				switch record := answer.(type) {
@@ -211,7 +212,7 @@ func (r *Router) Lookup(ctx context.Context, domain string, strategy dns.DomainS
 		)
 		metadata.ResetRuleCache()
 		metadata.DestinationAddresses = nil
-		dnsCtx, transport, transportStrategy, rule, ruleIndex = r.matchDNS(ctx, false, ruleIndex, true)
+		dnsCtx, transport, transportStrategy, rule, ruleIndex, _ = r.matchDNS(ctx, false, ruleIndex, true)
 		if strategy == dns.DomainStrategyAsIS {
 			strategy = transportStrategy
 		}

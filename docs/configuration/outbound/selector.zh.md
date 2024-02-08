@@ -10,6 +10,29 @@
     "proxy-b",
     "proxy-c"
   ],
+  "use_all_providers": false,
+  "providers": [
+    "provider-a",
+    "provider-b",
+    "provider-c",
+  ],
+  "includes": [
+    "^HK\\..+",
+    "^TW\\..+",
+    "^SG\\..+",
+  ],
+  "excludes": "^JP\\..+",
+  "types": [
+    "shadowsocks",
+    "vmess",
+    "vless",
+  ],
+  "ports": [
+    "80",
+    "2000:4000",
+    "2000:",
+    ":4000"
+  ],
   "default": "proxy-c",
   "interrupt_exist_connections": false
 }
@@ -19,13 +42,39 @@
 
     选择器目前只能通过 [Clash API](/zh/configuration/experimental#clash-api) 来控制。
 
+!!! note ""
+
+    当内容只有一项时，可以忽略 JSON 数组 [] 标签。
+
 ### 字段
 
 #### outbounds
 
-==必填==
-
 用于选择的出站标签列表。
+
+#### providers
+
+用于填充 `outbounds` 的提供者标签列表。
+
+#### use_all_providers
+
+使用所有提供者填充 `outbounds`。
+
+#### includes
+
+匹配提供者提供的出站标签正则表达式。
+
+#### excludes
+
+排除提供者提供的出站标签正则表达式。
+
+#### types
+
+匹配提供者提供的出站类型。
+
+#### ports
+
+匹配提供者提供的出站端口。
 
 #### default
 

@@ -105,11 +105,13 @@ type OutboundGroup interface {
 	Outbound
 	Now() string
 	All() []string
+	UpdateOutbounds(tag string) error
 }
 
 type URLTestGroup interface {
 	OutboundGroup
 	URLTest(ctx context.Context) (map[string]uint16, error)
+	PerformUpdateCheck(tag string, force bool)
 }
 
 func OutboundTag(detour Outbound) string {

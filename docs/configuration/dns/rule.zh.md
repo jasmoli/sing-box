@@ -122,7 +122,9 @@ icon: material/new-box
         "outbound": [
           "direct"
         ],
-        "server": "local",
+        "server": [
+          "local"
+        ],
         "disable_cache": false,
         "client_subnet": "127.0.0.1"
       },
@@ -130,7 +132,9 @@ icon: material/new-box
         "type": "logical",
         "mode": "and",
         "rules": [],
-        "server": "local",
+        "server": [
+          "local"
+        ],
         "disable_cache": false,
         "client_subnet": "127.0.0.1"
       }
@@ -323,7 +327,9 @@ DNS 查询类型。值可以为整数或者类型名称字符串。
 
 ==必填==
 
-目标 DNS 服务器的标签。
+目标 DNS 服务器的标签列表。
+
+当数量大于一时并发请求所有目标 DNS 服务器，取最快非空响应。
 
 #### disable_cache
 

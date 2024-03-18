@@ -54,6 +54,22 @@ func hasHeadlessRule(rules []option.HeadlessRule, cond func(rule option.DefaultH
 	return false
 }
 
+func hasMultiDNSServer(rules []option.DNSRule) bool {
+	for _, rule := range rules {
+		switch rule.Type {
+		case C.RuleTypeDefault:
+			if len(rule.DefaultOptions.Server) > 1 {
+				return true
+			}
+		case C.RuleTypeLogical:
+			if len(rule.LogicalOptions.Server) > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func isGeoIPRule(rule option.DefaultRule) bool {
 	return len(rule.SourceGeoIP) > 0 && common.Any(rule.SourceGeoIP, notPrivateNode) || len(rule.GeoIP) > 0 && common.Any(rule.GeoIP, notPrivateNode)
 }

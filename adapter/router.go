@@ -24,6 +24,8 @@ type Router interface {
 	Outbound(tag string) (Outbound, bool)
 	DefaultOutbound(network string) (Outbound, error)
 
+	Transport(tag string) (dns.Transport, bool)
+
 	FakeIPStore() FakeIPStore
 
 	ConnectionRouter
@@ -89,6 +91,7 @@ type DNSRule interface {
 	ClientSubnet() *netip.Addr
 	WithAddressLimit() bool
 	MatchAddressLimit(metadata *InboundContext) bool
+	Servers() []string
 }
 
 type RuleSet interface {

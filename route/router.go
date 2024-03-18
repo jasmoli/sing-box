@@ -74,7 +74,7 @@ type Router struct {
 	dnsRules                           []adapter.DNSRule
 	ruleSets                           []adapter.RuleSet
 	ruleSetMap                         map[string]adapter.RuleSet
-	defaultTransport                   dns.Transport
+	defaultTransports                  []dns.Transport
 	transports                         []dns.Transport
 	transportMap                       map[string]dns.Transport
 	transportDomainStrategy            map[dns.Transport]dns.DomainStrategy
@@ -139,7 +139,7 @@ func NewRouter(
 	router.dnsClient = dns.NewClient(dns.ClientOptions{
 		DisableCache:     dnsOptions.DNSClientOptions.DisableCache,
 		DisableExpire:    dnsOptions.DNSClientOptions.DisableExpire,
-		IndependentCache: dnsOptions.DNSClientOptions.IndependentCache,
+		IndependentCache: dnsOptions.DNSClientOptions.IndependentCache || hasMultiDNSServer(dnsOptions.Rules) || len(dnsOptions.Final) > 1,
 		RDRC: func() dns.RDRCStore {
 			cacheFile := service.FromContext[adapter.CacheFile](ctx)
 			if cacheFile == nil {
@@ -280,14 +280,17 @@ func NewRouter(
 		}
 		return nil, E.New("found circular reference in dns servers: ", strings.Join(unresolvedTags, " "))
 	}
-	var defaultTransport dns.Transport
-	if dnsOptions.Final != "" {
-		defaultTransport = dummyTransportMap[dnsOptions.Final]
-		if defaultTransport == nil {
-			return nil, E.New("default dns server not found: ", dnsOptions.Final)
+	var defaultTransports []dns.Transport
+	if len(dnsOptions.Final) > 0 {
+		for i, server := range dnsOptions.Final {
+			transport := dummyTransportMap[server]
+			if transport == nil {
+				return nil, E.New("default dns server[", i, "] not found: ", server)
+			}
+			defaultTransports = append(defaultTransports, transport)
 		}
 	}
-	if defaultTransport == nil {
+	if len(defaultTransports) == 0 {
 		if len(transports) == 0 {
 			transports = append(transports, common.Must1(dns.CreateTransport(dns.TransportOptions{
 				Context: ctx,
@@ -296,12 +299,14 @@ func NewRouter(
 				Dialer:  common.Must1(dialer.NewDefault(router, option.DialerOptions{})),
 			})))
 		}
-		defaultTransport = transports[0]
+		defaultTransports = append(defaultTransports, transports[0])
 	}
-	if _, isFakeIP := defaultTransport.(adapter.FakeIPTransport); isFakeIP {
-		return nil, E.New("default DNS server cannot be fakeip")
+	for _, server := range defaultTransports {
+		if _, isFakeIP := server.(adapter.FakeIPTransport); isFakeIP {
+			return nil, E.New("default dns servers cannot be fakeip")
+		}
 	}
-	router.defaultTransport = defaultTransport
+	router.defaultTransports = defaultTransports
 	router.transports = transports
 	router.transportMap = transportMap
 	router.transportDomainStrategy = transportDomainStrategy
@@ -467,6 +472,11 @@ func (r *Router) Outbounds() []adapter.Outbound {
 		return nil
 	}
 	return r.outbounds
+}
+
+func (r *Router) Transport(tag string) (dns.Transport, bool) {
+	transport, loaded := r.transportMap[tag]
+	return transport, loaded
 }
 
 func (r *Router) PreStart() error {
@@ -641,20 +651,25 @@ func (r *Router) Start() error {
 	r.dnsClient.Start()
 	monitor.Finish()
 
-	for i, rule := range r.dnsRules {
-		monitor.Start("initialize DNS rule[", i, "]")
-		err := rule.Start()
-		monitor.Finish()
-		if err != nil {
-			return E.Cause(err, "initialize DNS rule[", i, "]")
-		}
-	}
 	for i, transport := range r.transports {
 		monitor.Start("initialize DNS transport[", i, "]")
 		err := transport.Start()
 		monitor.Finish()
 		if err != nil {
 			return E.Cause(err, "initialize DNS server[", i, "]")
+		}
+	}
+	for _, transport := range r.defaultTransports {
+		if _, isRCode := transport.(*dns.RCodeTransport); isRCode && len(r.defaultTransports) > 1 {
+			return E.New("initialize default dns servers failed: rcode server can only be used stand-alone")
+		}
+	}
+	for i, rule := range r.dnsRules {
+		monitor.Start("initialize DNS rule[", i, "]")
+		err := rule.Start()
+		monitor.Finish()
+		if err != nil {
+			return E.Cause(err, "initialize DNS rule[", i, "]")
 		}
 	}
 	if r.timeService != nil {

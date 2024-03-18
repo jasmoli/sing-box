@@ -15,7 +15,9 @@ icon: material/new-box
   "dns": {
     "servers": [],
     "rules": [],
-    "final": "",
+    "final": [
+      "local"
+    ],
     "strategy": "",
     "disable_cache": false,
     "disable_expire": false,
@@ -38,7 +40,13 @@ icon: material/new-box
 
 #### final
 
-Default dns server tag.
+!!! note ""
+
+    You can ignore the JSON Array [] tag when the content is only one item
+
+List of default dns server tag.
+
+When the count of list is greater than one, concurrent requests to all dns servers and take the fastest non-empty response.
 
 The first server will be used if empty.
 

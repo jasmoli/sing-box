@@ -27,7 +27,12 @@ type myOutboundAdapter struct {
 	router       adapter.Router
 	logger       log.ContextLogger
 	tag          string
+	port         uint16
 	dependencies []string
+
+	connCount int64
+	closeSlow bool
+	closeChan chan bool
 }
 
 func (a *myOutboundAdapter) Type() string {
@@ -36,6 +41,19 @@ func (a *myOutboundAdapter) Type() string {
 
 func (a *myOutboundAdapter) Tag() string {
 	return a.tag
+}
+
+func (a *myOutboundAdapter) Port() int {
+	switch a.protocol {
+	case C.TypeDirect, C.TypeBlock, C.TypeDNS, C.TypeTor, C.TypeSelector, C.TypeURLTest:
+		return 65536
+	default:
+		return int(a.port)
+	}
+}
+
+func (a *myOutboundAdapter) SetTag(tag string) {
+	a.tag = tag
 }
 
 func (a *myOutboundAdapter) Network() []string {
@@ -50,6 +68,28 @@ func (a *myOutboundAdapter) NewError(ctx context.Context, err error) {
 	NewError(a.logger, ctx, err)
 }
 
+func (a *myOutboundAdapter) OpenConnection() {
+	a.connCount++
+}
+func (a *myOutboundAdapter) CloseConnection() {
+	a.connCount--
+	if a.closeSlow {
+		a.closeChan <- true
+	}
+}
+
+func (a *myOutboundAdapter) WaitForConnClosed() {
+	a.closeChan = make(chan bool, 1)
+	a.closeSlow = true
+	for {
+		if a.connCount == 0 {
+			break
+		}
+		<-a.closeChan
+	}
+	close(a.closeChan)
+}
+
 func withDialerDependency(options option.DialerOptions) []string {
 	if options.Detour != "" {
 		return []string{options.Detour}
@@ -58,6 +98,10 @@ func withDialerDependency(options option.DialerOptions) []string {
 }
 
 func NewConnection(ctx context.Context, this N.Dialer, conn net.Conn, metadata adapter.InboundContext) error {
+	if out, ok := this.(adapter.Outbound); ok {
+		out.OpenConnection()
+		defer out.CloseConnection()
+	}
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.Conn
 	var err error
@@ -78,6 +122,10 @@ func NewConnection(ctx context.Context, this N.Dialer, conn net.Conn, metadata a
 }
 
 func NewDirectConnection(ctx context.Context, router adapter.Router, this N.Dialer, conn net.Conn, metadata adapter.InboundContext, domainStrategy dns.DomainStrategy) error {
+	if out, ok := this.(adapter.Outbound); ok {
+		out.OpenConnection()
+		defer out.CloseConnection()
+	}
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.Conn
 	var err error
@@ -105,6 +153,10 @@ func NewDirectConnection(ctx context.Context, router adapter.Router, this N.Dial
 }
 
 func NewPacketConnection(ctx context.Context, this N.Dialer, conn N.PacketConn, metadata adapter.InboundContext) error {
+	if out, ok := this.(adapter.Outbound); ok {
+		out.OpenConnection()
+		defer out.CloseConnection()
+	}
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.PacketConn
 	var destinationAddress netip.Addr
@@ -146,6 +198,10 @@ func NewPacketConnection(ctx context.Context, this N.Dialer, conn N.PacketConn, 
 }
 
 func NewDirectPacketConnection(ctx context.Context, router adapter.Router, this N.Dialer, conn N.PacketConn, metadata adapter.InboundContext, domainStrategy dns.DomainStrategy) error {
+	if out, ok := this.(adapter.Outbound); ok {
+		out.OpenConnection()
+		defer out.CloseConnection()
+	}
 	ctx = adapter.WithContext(ctx, &metadata)
 	var outConn net.PacketConn
 	var destinationAddress netip.Addr

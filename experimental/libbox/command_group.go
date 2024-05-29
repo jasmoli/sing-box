@@ -130,7 +130,7 @@ func writeGroups(writer io.Writer, boxService *BoxService) error {
 		}
 
 		for _, itemTag := range iGroup.All() {
-			itemOutbound, isLoaded := boxService.instance.Router().Outbound(itemTag)
+			itemOutbound, isLoaded := boxService.instance.Router().OutboundWithProvider(itemTag)
 			if !isLoaded {
 				continue
 			}

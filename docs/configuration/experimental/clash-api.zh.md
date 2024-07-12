@@ -27,6 +27,7 @@ icon: material/new-box
       "external_ui_download_detour": "",
       "secret": "",
       "default_mode": "",
+      "trusted_domain": [],
       "access_control_allow_origin": [],
       "access_control_allow_private_network": false,
       
@@ -120,6 +121,11 @@ Clash 中的默认模式，默认使用 `Rule`。
 允许从私有网络访问。
 
 要从公共网站访问私有网络上的 Clash API，必须启用 `access_control_allow_private_network`。
+
+#### trusted_domain
+
+为来自指定域名的 CORS 请求添加 `Access-Control-Allow-Private-Network` 响应头以规避浏览器的请求阻断。参见 [私有网络访问](
+https://wicg.github.io/private-network-access/)
 
 #### store_mode
 

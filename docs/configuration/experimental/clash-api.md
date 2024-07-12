@@ -27,6 +27,7 @@ icon: material/new-box
       "external_ui_download_detour": "",
       "secret": "",
       "default_mode": "",
+      "trusted_domain": [],
       "access_control_allow_origin": [],
       "access_control_allow_private_network": false,
       
@@ -122,6 +123,11 @@ To access the Clash API on a private network from a public website, you must exp
 Allow access from private network.
 
 To access the Clash API on a private network from a public website, `access_control_allow_private_network` must be enabled.
+
+#### trusted_domain
+
+Add `Access-Control-Allow-Private-Network` into CORS headers for matched domains to avoid http requests blocking by 
+browser. See [Private Network Access](https://wicg.github.io/private-network-access/)
 
 #### store_mode
 

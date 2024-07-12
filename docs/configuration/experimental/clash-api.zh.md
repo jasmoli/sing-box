@@ -16,6 +16,7 @@
   "external_ui_download_detour": "",
   "secret": "",
   "default_mode": "",
+  "trusted_domain": [],
   
   // Deprecated
   
@@ -60,6 +61,11 @@ RESTful API 的密钥（可选）
 Clash 中的默认模式，默认使用 `Rule`。
 
 此设置没有直接影响，但可以通过 `clash_mode` 规则项在路由和 DNS 规则中使用。
+
+#### trusted_domain
+
+为来自指定域名的 CORS 请求添加 `Access-Control-Allow-Private-Network` 响应头以规避浏览器的请求阻断。参见 [私有网络访问](
+https://wicg.github.io/private-network-access/)
 
 #### store_mode
 

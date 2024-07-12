@@ -16,9 +16,10 @@
   "external_ui_download_detour": "",
   "secret": "",
   "default_mode": "",
-  
+  "trusted_domain": [],
+
   // Deprecated
-  
+
   "store_mode": false,
   "store_selected": false,
   "store_fakeip": false,
@@ -62,6 +63,11 @@ ALWAYS set a secret if RESTful API is listening on 0.0.0.0
 Default mode in clash, `Rule` will be used if empty.
 
 This setting has no direct effect, but can be used in routing and DNS rules via the `clash_mode` rule item.
+
+#### trusted_domain
+
+Add `Access-Control-Allow-Private-Network` into CORS headers for matched domains to avoid http requests blocking by 
+browser. See [Private Network Access](https://wicg.github.io/private-network-access/)
 
 #### store_mode
 

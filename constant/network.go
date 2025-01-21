@@ -10,6 +10,8 @@ const (
 	ICMPFlowMax         = 1024
 )
 
+var URLTestUnifiedDelay = false
+
 type InterfaceType uint8
 
 const (

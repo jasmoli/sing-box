@@ -141,7 +141,29 @@ func urlTest(ctx context.Context, link string, detour N.Dialer) (t uint16, err e
 	if err != nil {
 		return
 	}
-	resp.Body.Close()
+	resp, start = retryURLTest(&client, req, ctx, resp, start)
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
 	t = uint16(time.Since(start) / time.Millisecond)
 	return
+}
+
+func retryURLTest(client *http.Client, req *http.Request, ctx context.Context,
+	resp *http.Response, start time.Time) (*http.Response, time.Time) {
+	if !C.URLTestUnifiedDelay {
+		return resp, start
+	}
+	retryTime := time.Now()
+	retryResp, err := client.Do(req.WithContext(ctx))
+	if err != nil {
+		if retryResp != nil && retryResp.Body != nil {
+			retryResp.Body.Close()
+		}
+		return resp, start
+	}
+	if resp != nil && resp.Body != nil {
+		resp.Body.Close()
+	}
+	return retryResp, retryTime
 }

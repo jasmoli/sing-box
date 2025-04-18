@@ -19,16 +19,20 @@ import (
 )
 
 var (
-	bucketSelected = []byte("selected")
-	bucketExpand   = []byte("group_expand")
-	bucketMode     = []byte("clash_mode")
-	bucketRuleSet  = []byte("rule_set")
+	bucketSelected         = []byte("selected")
+	bucketExpand           = []byte("group_expand")
+	bucketMode             = []byte("clash_mode")
+	bucketRuleSet          = []byte("rule_set")
+	bucketExternalUI       = []byte("external_ui")
+	bucketOutboundProvider = []byte("outbound_provider")
 
 	bucketNameList = []string{
 		string(bucketSelected),
 		string(bucketExpand),
 		string(bucketMode),
 		string(bucketRuleSet),
+		string(bucketExternalUI),
+		string(bucketOutboundProvider),
 		string(bucketRDRC),
 	}
 
@@ -320,7 +324,7 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 func (c *CacheFile) LoadSubscription(tag string) *adapter.SavedBinary {
 	var savedSet adapter.SavedBinary
 	err := c.DB.View(func(t *bbolt.Tx) error {
-		bucket := c.bucket(t, bucketRuleSet)
+		bucket := c.bucket(t, bucketOutboundProvider)
 		if bucket == nil {
 			return os.ErrNotExist
 		}
@@ -338,7 +342,7 @@ func (c *CacheFile) LoadSubscription(tag string) *adapter.SavedBinary {
 
 func (c *CacheFile) SaveSubscription(tag string, sub *adapter.SavedBinary) error {
 	return c.DB.Batch(func(t *bbolt.Tx) error {
-		bucket, err := c.createBucket(t, bucketRuleSet)
+		bucket, err := c.createBucket(t, bucketOutboundProvider)
 		if err != nil {
 			return err
 		}

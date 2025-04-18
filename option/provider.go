@@ -62,6 +62,7 @@ type ProviderRemoteOptions struct {
 	ProviderBaseOptions
 	ProviderHealthCheckOptions
 	URL            string             `json:"download_url"`
+	Path           string             `json:"path,omitempty"`
 	UserAgent      string             `json:"download_ua,omitempty"`
 	DownloadDetour string             `json:"download_detour,omitempty"`
 	UpdateInterval badoption.Duration `json:"download_interval,omitempty"`

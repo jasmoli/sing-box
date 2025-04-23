@@ -88,6 +88,26 @@ func (s *RemoteRuleSet) Name() string {
 	return s.tag
 }
 
+func (s *RemoteRuleSet) Format() string {
+	return s.options.Format
+}
+
+func (s *RemoteRuleSet) Type() string {
+	return C.RuleSetTypeRemote
+}
+
+func (s *RemoteRuleSet) RuleCount() uint64 {
+	return uint64(len(s.rules))
+}
+
+func (s *RemoteRuleSet) Update() error {
+	return s.fetch(s.ctx, false)
+}
+
+func (s *RemoteRuleSet) UpdatedAt() time.Time {
+	return s.lastUpdated
+}
+
 func (s *RemoteRuleSet) String() string {
 	return strings.Join(F.MapToString(s.rules), " ")
 }

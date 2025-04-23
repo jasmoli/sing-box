@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/sagernet/fswatch"
 	"github.com/sagernet/sing-box/adapter"
@@ -34,6 +35,9 @@ type LocalRuleSet struct {
 	access     sync.Mutex
 	callbacks  list.List[adapter.RuleSetUpdateCallback]
 	refs       atomic.Int32
+
+	lastUpdated time.Time
+	ruleSetType string
 }
 
 func NewLocalRuleSet(ctx context.Context, logger logger.Logger, tag string, options option.RuleSet) (*LocalRuleSet, error) {
@@ -42,6 +46,8 @@ func NewLocalRuleSet(ctx context.Context, logger logger.Logger, tag string, opti
 		logger:     logger,
 		tag:        tag,
 		fileFormat: options.Format,
+
+		ruleSetType: options.Type,
 	}
 	if options.Type == C.RuleSetTypeInline {
 		if len(options.InlineOptions.Rules) == 0 {
@@ -79,6 +85,26 @@ func (s *LocalRuleSet) Name() string {
 	return s.tag
 }
 
+func (s *LocalRuleSet) Format() string {
+	return s.fileFormat
+}
+
+func (s *LocalRuleSet) Type() string {
+	return s.ruleSetType
+}
+
+func (s *LocalRuleSet) RuleCount() uint64 {
+	content := s.content.Load()
+	if content == nil {
+		return 0
+	}
+	return uint64(len(content.rules))
+}
+
+func (s *LocalRuleSet) UpdatedAt() time.Time {
+	return s.lastUpdated
+}
+
 func (s *LocalRuleSet) String() string {
 	return s.content.Load().String()
 }
@@ -94,6 +120,12 @@ func (s *LocalRuleSet) StartContext(ctx context.Context, startContext *adapter.H
 }
 
 func (s *LocalRuleSet) reloadFile(path string) error {
+	fileInfo, statErr := filemanager.Stat(s.ctx, path)
+	if statErr != nil {
+		s.logger.Warn(E.Cause(statErr, "stat rule-set file"))
+	} else {
+		s.lastUpdated = fileInfo.ModTime()
+	}
 	var ruleSet option.PlainRuleSetCompat
 	switch s.fileFormat {
 	case C.RuleSetFormatSource, "":

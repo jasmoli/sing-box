@@ -5,8 +5,10 @@ import (
 	"net"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	C "github.com/sagernet/sing-box/constant"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/common/x/list"
 
@@ -45,6 +47,7 @@ func (r *ruleSetItemTestRouter) RuleSet(tag string) (adapter.RuleSet, bool) {
 	ruleSet, loaded := r.ruleSets[tag]
 	return ruleSet, loaded
 }
+func (r *ruleSetItemTestRouter) RuleSets() []adapter.RuleSet                { return nil }
 func (r *ruleSetItemTestRouter) Rules() []adapter.Rule                      { return nil }
 func (r *ruleSetItemTestRouter) NeedFindProcess() bool                      { return false }
 func (r *ruleSetItemTestRouter) NeedFindNeighbor() bool                     { return false }
@@ -59,6 +62,14 @@ type countingRuleSet struct {
 }
 
 func (s *countingRuleSet) Name() string { return s.name }
+
+func (s *countingRuleSet) Type() string { return C.RuleSetTypeLocal }
+
+func (s *countingRuleSet) Format() string { return C.RuleSetFormatSource }
+
+func (s *countingRuleSet) RuleCount() uint64 { return 1 }
+
+func (s *countingRuleSet) UpdatedAt() time.Time { return time.Time{} }
 
 func (s *countingRuleSet) StartContext(context.Context, *adapter.HTTPStartContext) error { return nil }
 

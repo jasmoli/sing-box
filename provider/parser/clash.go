@@ -68,6 +68,12 @@ func convertTLSOptions(proxy map[string]any) *option.OutboundTLSOptions {
 			options.Reality.ShortID = sid
 		}
 	}
+	if kernelTx, exists := proxy["kernel-tx"].(bool); exists {
+		options.KernelTx = kernelTx
+	}
+	if kernelRx, exists := proxy["kernel-rx"].(bool); exists {
+		options.KernelRx = kernelRx
+	}
 	return &options
 }
 

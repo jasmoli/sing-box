@@ -52,7 +52,6 @@ type ProviderBaseOptions struct {
 }
 
 type ProviderLocalOptions struct {
-	FilterOptions
 	ProviderBaseOptions
 	ProviderHealthCheckOptions
 }
@@ -69,7 +68,6 @@ type ProviderRemoteOptions struct {
 }
 
 type ProviderInlineOptions struct {
-	FilterOptions
 	ProviderHealthCheckOptions
 	Outbounds   []Outbound                 `json:"outbounds,omitempty"`
 }

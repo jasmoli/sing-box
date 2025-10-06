@@ -34,6 +34,10 @@ func (a *Adapter) Tag() string {
 	return a.endpointTag
 }
 
+func (a *Adapter) Port() uint16 {
+	return 0
+}
+
 func (a *Adapter) Network() []string {
 	return a.network
 }

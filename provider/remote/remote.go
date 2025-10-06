@@ -58,7 +58,7 @@ type ProviderRemote struct {
 	downloadDetour string
 	updateInterval time.Duration
 	exclude        *regexp.Regexp
-	include        *regexp.Regexp
+	includes       []*regexp.Regexp
 }
 
 func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory log.Factory, tag string, options option.ProviderRemoteOptions) (adapter.Provider, error) {
@@ -83,8 +83,8 @@ func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory lo
 	logger := logFactory.NewLogger(F.ToString("provider/remote", "[", tag, "]"))
 	updateChan := make(chan struct{})
 	close(updateChan)
-	return &ProviderRemote{
-		Adapter:  provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeRemote, options.HealthCheck),
+	outProvider := &ProviderRemote{
+		Adapter:  provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeRemote, options.ProviderHealthCheckOptions),
 		ctx:      ctx,
 		cancel:   cancel,
 		logger:   logger,
@@ -97,8 +97,15 @@ func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory lo
 		downloadDetour: options.DownloadDetour,
 		updateInterval: updateInterval,
 		exclude:        (*regexp.Regexp)(options.Exclude),
-		include:        (*regexp.Regexp)(options.Include),
-	}, nil
+	}
+	if len(*options.Includes) > 0 {
+		includes := make([]*regexp.Regexp, 0, len(*options.Includes))
+		for _, include := range *options.Includes {
+			includes = append(includes, (*regexp.Regexp)(include))
+		}
+		outProvider.SetIncludes(includes)
+	}
+	return outProvider, nil
 }
 
 func (s *ProviderRemote) Start() error {
@@ -302,17 +309,31 @@ func (s *ProviderRemote) loopUpdate() {
 	}
 }
 
+func TestIncludes(tag string, includes []*regexp.Regexp) bool {
+	if len(includes) == 0 {
+		return true
+	}
+	return common.All(includes, func(it *regexp.Regexp) bool {
+		matched := it.MatchString(tag)
+		return matched
+	})
+}
+
 func (s *ProviderRemote) updateProviderFromContent(content string) error {
 	outboundOpts, err := parser.ParseSubscription(s.ctx, content)
 	if err != nil {
 		return err
 	}
 	outboundOpts = common.Filter(outboundOpts, func(it option.Outbound) bool {
-		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (s.include == nil || s.include.MatchString(it.Tag))
+		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (len(s.includes) == 0 || TestIncludes(it.Tag, s.includes))
 	})
 	s.UpdateOutbounds(s.lastOutOpts, outboundOpts)
 	s.lastOutOpts = outboundOpts
 	return nil
+}
+
+func (s *ProviderRemote) SetIncludes(includes []*regexp.Regexp){
+	s.includes = includes
 }
 
 func getFirstLine(content string) (string, string) {

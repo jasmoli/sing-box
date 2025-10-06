@@ -47,32 +47,35 @@ func (h *Provider) UnmarshalJSONContext(ctx context.Context, content []byte) err
 }
 
 type ProviderBaseOptions struct {
-	Path        string                     `json:"path"`
-	Exclude     *badoption.Regexp          `json:"exclude,omitempty"`
-	Include     *badoption.Regexp          `json:"include,omitempty"`
-	HealthCheck ProviderHealthCheckOptions `json:"health_check,omitempty"`
+	Path                         string                                 `json:"path"`
+	Exclude                      *badoption.Regexp                      `json:"exclude,omitempty"`
+	Includes                     *badoption.Listable[*badoption.Regexp] `json:"include,omitempty"`
+	Override                     *DialerOptions                         `json:"outbound_override"`
 }
 
 type ProviderLocalOptions struct {
 	ProviderBaseOptions
+	ProviderHealthCheckOptions
 }
 
 type ProviderRemoteOptions struct {
 	ProviderBaseOptions
-	URL            string             `json:"url"`
-	UserAgent      string             `json:"user_agent,omitempty"`
+	ProviderHealthCheckOptions
+	URL            string             `json:"download_url"`
+	UserAgent      string             `json:"download_ua,omitempty"`
 	DownloadDetour string             `json:"download_detour,omitempty"`
-	UpdateInterval badoption.Duration `json:"update_interval,omitempty"`
+	UpdateInterval badoption.Duration `json:"download_interval,omitempty"`
 }
 
 type ProviderInlineOptions struct {
+	ProviderHealthCheckOptions
 	Outbounds   []Outbound                 `json:"outbounds,omitempty"`
-	HealthCheck ProviderHealthCheckOptions `json:"health_check,omitempty"`
 }
 
 type ProviderHealthCheckOptions struct {
-	Enabled  bool               `json:"enabled,omitempty"`
-	URL      string             `json:"url,omitempty"`
-	Interval badoption.Duration `json:"interval,omitempty"`
-	Timeout  badoption.Duration `json:"timeout,omitempty"`
+	EnabledHealthCheck           bool               `json:"enable_healthcheck"`
+	HealthCheckURL               string             `json:"healthcheck_url"`
+	HealthCheckInterval          badoption.Duration `json:"healthcheck_interval,omitempty"`
+	HealthCheckWhenNetworkChange bool               `json:"healthcheck_when_network_change,omitempty"`
+	HealthCheckTimeout           badoption.Duration `json:"healthcheck_timeout"`
 }

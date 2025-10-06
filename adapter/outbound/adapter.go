@@ -9,6 +9,7 @@ type Adapter struct {
 	outboundTag  string
 	network      []string
 	dependencies []string
+	outboundPort uint16
 }
 
 func NewAdapter(outboundType string, outboundTag string, network []string, dependencies []string) Adapter {
@@ -20,12 +21,16 @@ func NewAdapter(outboundType string, outboundTag string, network []string, depen
 	}
 }
 
-func NewAdapterWithDialerOptions(outboundType string, outboundTag string, network []string, dialOptions option.DialerOptions) Adapter {
+func NewAdapterWithDialerOptions(outboundType string, outboundTag string, network []string, dialOptions option.DialerOptions, serverOptions *option.ServerOptions) Adapter {
 	var dependencies []string
 	if dialOptions.Detour != "" {
 		dependencies = []string{dialOptions.Detour}
 	}
-	return NewAdapter(outboundType, outboundTag, network, dependencies)
+	adapter := NewAdapter(outboundType, outboundTag, network, dependencies)
+	if serverOptions != nil {
+		adapter.outboundPort = serverOptions.ServerPort
+	}
+	return adapter
 }
 
 func (a *Adapter) Type() string {
@@ -34,6 +39,10 @@ func (a *Adapter) Type() string {
 
 func (a *Adapter) Tag() string {
 	return a.outboundTag
+}
+
+func (a *Adapter) Port() uint16 {
+	return a.outboundPort
 }
 
 func (a *Adapter) Network() []string {

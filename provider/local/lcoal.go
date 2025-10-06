@@ -47,7 +47,7 @@ func NewProviderInline(ctx context.Context, router adapter.Router, logFactory lo
 		logger   = logFactory.NewLogger(F.ToString("provider/inline", "[", tag, "]"))
 	)
 	provider := &ProviderLocal{
-		Adapter: provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeInline, options.ProviderHealthCheckOptions),
+		Adapter: provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeInline, options.ProviderHealthCheckOptions, options.Override),
 		ctx:     ctx,
 		logger:  logger,
 	}
@@ -64,7 +64,7 @@ func NewProviderLocal(ctx context.Context, router adapter.Router, logFactory log
 		logger   = logFactory.NewLogger(F.ToString("provider/local", "[", tag, "]"))
 	)
 	provider := &ProviderLocal{
-		Adapter:  provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeLocal, options.ProviderHealthCheckOptions),
+		Adapter:  provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeLocal, options.ProviderHealthCheckOptions, options.Override),
 		ctx:      ctx,
 		logger:   logger,
 		provider: service.FromContext[adapter.ProviderManager](ctx),
@@ -120,7 +120,7 @@ func (s *ProviderLocal) reloadFile(path string) error {
 	if err != nil {
 		return err
 	}
-	outboundOpts, err := parser.ParseSubscription(s.ctx, string(content))
+	outboundOpts, err := parser.ParseSubscription(s.ctx, string(content), s.OverrideOptions())
 	if err != nil {
 		return err
 	}

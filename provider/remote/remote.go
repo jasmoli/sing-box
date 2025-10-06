@@ -18,6 +18,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/provider"
+	"github.com/sagernet/sing-box/common/filter"
 	"github.com/sagernet/sing-box/common/hash"
 	"github.com/sagernet/sing-box/common/interrupt"
 	C "github.com/sagernet/sing-box/constant"
@@ -420,16 +421,6 @@ func (s *ProviderRemote) loopUpdate() {
 	}
 }
 
-func TestIncludes(tag string, includes []*regexp.Regexp) bool {
-	if len(includes) == 0 {
-		return true
-	}
-	return common.All(includes, func(it *regexp.Regexp) bool {
-		matched := it.MatchString(tag)
-		return matched
-	})
-}
-
 func (s *ProviderRemote) saveCacheFile(hasInfo bool, info adapter.SubscriptionInfo, contentRaw []byte) {
 	content := contentRaw
 	if hasInfo {
@@ -455,7 +446,7 @@ func (s *ProviderRemote) updateProviderFromContent(content string) error {
 		return err
 	}
 	outboundOpts = common.Filter(outboundOpts, func(it option.Outbound) bool {
-		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (len(s.includes) == 0 || TestIncludes(it.Tag, s.includes))
+		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (len(s.includes) == 0 || filter.TestIncludes(it.Tag, s.includes))
 	})
 	s.UpdateOutbounds(s.lastOutOpts, outboundOpts)
 	s.lastOutOpts = outboundOpts

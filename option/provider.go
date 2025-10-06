@@ -47,18 +47,18 @@ func (h *Provider) UnmarshalJSONContext(ctx context.Context, content []byte) err
 }
 
 type ProviderBaseOptions struct {
-	Path                         string                                 `json:"path"`
-	Exclude                      *badoption.Regexp                      `json:"exclude,omitempty"`
-	Includes                     *badoption.Listable[*badoption.Regexp] `json:"include,omitempty"`
-	Override                     *DialerOptions                         `json:"outbound_override"`
+	Path     string         `json:"path"`
+	Override *DialerOptions `json:"outbound_override"`
 }
 
 type ProviderLocalOptions struct {
+	FilterOptions
 	ProviderBaseOptions
 	ProviderHealthCheckOptions
 }
 
 type ProviderRemoteOptions struct {
+	FilterOptions
 	ProviderBaseOptions
 	ProviderHealthCheckOptions
 	URL            string             `json:"download_url"`
@@ -69,6 +69,7 @@ type ProviderRemoteOptions struct {
 }
 
 type ProviderInlineOptions struct {
+	FilterOptions
 	ProviderHealthCheckOptions
 	Outbounds   []Outbound                 `json:"outbounds,omitempty"`
 }

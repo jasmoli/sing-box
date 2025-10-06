@@ -2,6 +2,13 @@ package option
 
 import "github.com/sagernet/sing/common/json/badoption"
 
+type FilterOptions struct {
+	Exclude  *badoption.Regexp                      `json:"exclude,omitempty"`
+	Includes *badoption.Listable[*badoption.Regexp] `json:"include,omitempty"`
+	Types    *badoption.Listable[string]            `json:"types,omitempty"`
+	Ports    *badoption.Listable[string]            `json:"ports,omitempty"`
+}
+
 type SelectorOutboundOptions struct {
 	GroupCommonOption
 	Default                   string `json:"default,omitempty"`
@@ -18,9 +25,8 @@ type URLTestOutboundOptions struct {
 }
 
 type GroupCommonOption struct {
+	FilterOptions
 	Outbounds       []string          `json:"outbounds"`
 	Providers       []string          `json:"providers"`
-	Exclude         *badoption.Regexp `json:"exclude,omitempty"`
-	Include         *badoption.Regexp `json:"include,omitempty"`
 	UseAllProviders bool              `json:"use_all_providers,omitempty"`
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/filter"
 	"github.com/sagernet/sing-box/common/interrupt"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -49,7 +50,8 @@ type Selector struct {
 
 	providerTags    []string
 	exclude         *regexp.Regexp
-	include         *regexp.Regexp
+	includes        []*regexp.Regexp
+	types           []string
 	useAllProviders bool
 }
 
@@ -70,8 +72,21 @@ func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextL
 		interruptExternalConnections: options.InterruptExistConnections,
 		providerTags:                 options.Providers,
 		exclude:                      (*regexp.Regexp)(options.Exclude),
-		include:                      (*regexp.Regexp)(options.Include),
 		useAllProviders:              options.UseAllProviders,
+	}
+	if len(*options.Includes) > 0 {
+		includes := make([]*regexp.Regexp, 0, len(*options.Includes))
+		for _, include := range *options.Includes {
+			includes = append(includes, (*regexp.Regexp)(include))
+		}
+		outbound.includes = includes
+	}
+	if len(*options.Types) > 0 {
+		oTypes := make([]string, 0, len(*options.Types))
+		for _, oType := range *options.Types {
+			oTypes = append(oTypes, oType)
+		}
+		outbound.types = oTypes
 	}
 	return outbound, nil
 }
@@ -254,7 +269,10 @@ func (s *Selector) filterOutbounds(tag string) ([]string, map[string]adapter.Out
 			if s.exclude != nil && s.exclude.MatchString(tag) {
 				continue
 			}
-			if s.include != nil && !s.include.MatchString(tag) {
+			if len(s.includes) > 0 && !filter.TestIncludes(tag, s.includes) {
+				continue
+			}
+			if len(s.types) > 0 && !filter.TestTypes(detour.Type(), s.types) {
 				continue
 			}
 			tags = append(tags, tag)

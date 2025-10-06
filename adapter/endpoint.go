@@ -11,6 +11,7 @@ type Endpoint interface {
 	Lifecycle
 	Type() string
 	Tag() string
+	Port() uint16
 	Outbound
 }
 

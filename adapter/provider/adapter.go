@@ -9,6 +9,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/urltest"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/batch"
@@ -144,6 +145,25 @@ func (a *Adapter) UpdateOutbounds(oldOpts []option.Outbound, newOpts []option.Ou
 		}
 		outbounds = append(outbounds, outbound)
 		outboundsByTag[tag] = outbound
+	}
+	if len(outbounds) == 0 {
+		err := a.outbound.Create(
+			adapter.WithContext(a.ctx, &adapter.InboundContext{
+				Outbound: "OUTLESS",
+			}),
+			a.router,
+			a.logFactory.NewLogger(F.ToString("outbound/", C.TypeDirect, "[", "OUTLESS", "]")),
+			"OUTLESS",
+			C.TypeDirect,
+			&option.DirectOutboundOptions{},
+		)
+		if err != nil {
+			a.logger.Error(err, " in ", "OUTLESS", ", skip create this outbound")
+			return
+		}
+		outbound, _ := a.outbound.Outbound("OUTLESS")
+		outbounds = append(outbounds, outbound)
+		outboundsByTag["OUTLESS"] = outbound
 	}
 	if a.enabled && a.history != nil {
 		go a.HealthCheck(a.ctx)

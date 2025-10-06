@@ -88,6 +88,17 @@ func NewProviderLocal(ctx context.Context, router adapter.Router, logFactory log
 	return provider, nil
 }
 
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func (s *ProviderLocal) Start() error {
 	err := s.reloadFile(s.path)
 	if err != nil {
@@ -113,12 +124,23 @@ func (s *ProviderLocal) UpdatedAt() time.Time {
 func (s *ProviderLocal) Wait() {}
 
 func (s *ProviderLocal) reloadFile(path string) error {
-	if fileInfo, err := os.Stat(path); err == nil {
+	fileInfo, err := os.Stat(path)
+	if err == nil {
 		s.lastUpdated = fileInfo.ModTime()
+	}
+	if os.IsNotExist(err) {
+		_, err = os.Create(path)
+		if err != nil {
+			return err
+		}
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	if len(content) == 0 {
+		s.UpdateOutbounds(s.lastOutOpts, []option.Outbound{})
+		return nil
 	}
 	outboundOpts, err := parser.ParseSubscription(s.ctx, string(content), s.OverrideOptions())
 	if err != nil {

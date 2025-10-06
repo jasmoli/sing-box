@@ -68,6 +68,8 @@ type ProviderRemote struct {
 	updateInterval time.Duration
 	exclude        *regexp.Regexp
 	includes       []*regexp.Regexp
+	types          []string
+	ports          map[uint16]bool
 }
 
 func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory log.Factory, tag string, options option.ProviderRemoteOptions) (adapter.Provider, error) {
@@ -116,12 +118,26 @@ func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory lo
 		updateInterval: updateInterval,
 		exclude:        (*regexp.Regexp)(options.Exclude),
 	}
-	if len(*options.Includes) > 0 {
+	if options.Includes != nil && len(*options.Includes) > 0 {
 		includes := make([]*regexp.Regexp, 0, len(*options.Includes))
 		for _, include := range *options.Includes {
 			includes = append(includes, (*regexp.Regexp)(include))
 		}
-		outProvider.SetIncludes(includes)
+		outProvider.includes = includes
+	}
+	if options.Types != nil && len(*options.Types) > 0 {
+		oTypes := make([]string, 0, len(*options.Types))
+		for _, oType := range *options.Types {
+			oTypes = append(oTypes, oType)
+		}
+		outProvider.types = oTypes
+	}
+	if options.Ports != nil {
+		if portMap, err := filter.CreatePortsMap(*options.Ports); err == nil {
+			outProvider.ports = portMap
+		} else {
+			return nil, err
+		}
 	}
 	return outProvider, nil
 }
@@ -446,15 +462,11 @@ func (s *ProviderRemote) updateProviderFromContent(content string) error {
 		return err
 	}
 	outboundOpts = common.Filter(outboundOpts, func(it option.Outbound) bool {
-		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (len(s.includes) == 0 || filter.TestIncludes(it.Tag, s.includes))
+		return (s.exclude == nil || !s.exclude.MatchString(it.Tag)) && (len(s.includes) == 0 || filter.TestIncludes(it.Tag, s.includes)) && (len(s.types) == 0 || filter.TestTypes(it.Type, s.types)) && (len(s.ports) == 0 || filter.TestPorts(it.Options.(option.ServerOptions).ServerPort, s.ports))
 	})
 	s.UpdateOutbounds(s.lastOutOpts, outboundOpts)
 	s.lastOutOpts = outboundOpts
 	return nil
-}
-
-func (s *ProviderRemote) SetIncludes(includes []*regexp.Regexp){
-	s.includes = includes
 }
 
 func getFirstLine(content string) (string, string) {

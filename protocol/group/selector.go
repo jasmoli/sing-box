@@ -52,6 +52,7 @@ type Selector struct {
 	exclude         *regexp.Regexp
 	includes        []*regexp.Regexp
 	types           []string
+	ports           map[uint16]bool
 	useAllProviders bool
 }
 
@@ -74,19 +75,26 @@ func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextL
 		exclude:                      (*regexp.Regexp)(options.Exclude),
 		useAllProviders:              options.UseAllProviders,
 	}
-	if len(*options.Includes) > 0 {
+	if options.Includes != nil && len(*options.Includes) > 0 {
 		includes := make([]*regexp.Regexp, 0, len(*options.Includes))
 		for _, include := range *options.Includes {
 			includes = append(includes, (*regexp.Regexp)(include))
 		}
 		outbound.includes = includes
 	}
-	if len(*options.Types) > 0 {
+	if options.Types != nil && len(*options.Types) > 0 {
 		oTypes := make([]string, 0, len(*options.Types))
 		for _, oType := range *options.Types {
 			oTypes = append(oTypes, oType)
 		}
 		outbound.types = oTypes
+	}
+	if options.Ports != nil {
+		if portMap, err := filter.CreatePortsMap(*options.Ports); err == nil {
+			outbound.ports = portMap
+		} else {
+			return nil, err
+		}
 	}
 	return outbound, nil
 }
@@ -273,6 +281,9 @@ func (s *Selector) filterOutbounds(tag string) ([]string, map[string]adapter.Out
 				continue
 			}
 			if len(s.types) > 0 && !filter.TestTypes(detour.Type(), s.types) {
+				continue
+			}
+			if len(s.ports) > 0 && !filter.TestPorts(detour.Port(), s.ports) {
 				continue
 			}
 			tags = append(tags, tag)

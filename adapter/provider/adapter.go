@@ -41,11 +41,11 @@ type Adapter struct {
 }
 
 func NewAdapter(ctx context.Context, router adapter.Router, outbound adapter.OutboundManager, logFactory log.Factory, logger log.ContextLogger, providerTag string, providerType string, options option.ProviderHealthCheckOptions) Adapter {
-	timeout := time.Duration(options.Timeout)
+	timeout := time.Duration(options.HealthCheckTimeout)
 	if timeout == 0 {
 		timeout = 3 * time.Second
 	}
-	interval := time.Duration(options.Interval)
+	interval := time.Duration(options.HealthCheckInterval)
 	if interval == 0 {
 		interval = 10 * time.Minute
 	}
@@ -61,8 +61,8 @@ func NewAdapter(ctx context.Context, router adapter.Router, outbound adapter.Out
 		providerType: providerType,
 		providerTag:  providerTag,
 
-		link:     options.URL,
-		enabled:  options.Enabled,
+		link:     options.HealthCheckURL,
+		enabled:  options.EnabledHealthCheck,
 		timeout:  timeout,
 		interval: interval,
 	}
@@ -114,9 +114,9 @@ func (a *Adapter) UpdateOutbounds(oldOpts []option.Outbound, newOpts []option.Ou
 	for i, opt := range newOpts {
 		var tag string
 		if opt.Tag != "" {
-			tag = F.ToString(a.providerTag, "/", opt.Tag)
+			tag = opt.Tag
 		} else {
-			tag = F.ToString(a.providerTag, "/", i)
+			tag = F.ToString("[", a.providerTag, "]", i)
 		}
 		outbound, exist := a.outbound.Outbound(tag)
 		if !exist || !reflect.DeepEqual(opt, oldOptByTag[opt.Tag]) {
@@ -251,9 +251,9 @@ func (a *Adapter) removeUseless(newOpts []option.Outbound) {
 	for i, opt := range newOpts {
 		var tag string
 		if opt.Tag != "" {
-			tag = F.ToString(a.providerTag, "/", opt.Tag)
+			tag = opt.Tag
 		} else {
-			tag = F.ToString(a.providerTag, "/", i)
+			tag = F.ToString("[", a.providerTag, "]", i)
 		}
 		exists[tag] = true
 	}

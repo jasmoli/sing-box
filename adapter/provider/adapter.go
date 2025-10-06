@@ -33,6 +33,7 @@ type Adapter struct {
 	history        adapter.URLTestHistoryStorage
 	callbackAccess sync.Mutex
 	callbacks      list.List[adapter.ProviderUpdateCallback]
+	override       *option.ProviderOverrideOptions
 
 	link     string
 	enabled  bool
@@ -40,7 +41,7 @@ type Adapter struct {
 	interval time.Duration
 }
 
-func NewAdapter(ctx context.Context, router adapter.Router, outbound adapter.OutboundManager, logFactory log.Factory, logger log.ContextLogger, providerTag string, providerType string, options option.ProviderHealthCheckOptions) Adapter {
+func NewAdapter(ctx context.Context, router adapter.Router, outbound adapter.OutboundManager, logFactory log.Factory, logger log.ContextLogger, providerTag string, providerType string, options option.ProviderHealthCheckOptions, overrideOptions *option.ProviderOverrideOptions) Adapter {
 	timeout := time.Duration(options.HealthCheckTimeout)
 	if timeout == 0 {
 		timeout = 3 * time.Second
@@ -60,6 +61,7 @@ func NewAdapter(ctx context.Context, router adapter.Router, outbound adapter.Out
 		logger:       logger,
 		providerType: providerType,
 		providerTag:  providerTag,
+		override:     overrideOptions,
 
 		link:     options.HealthCheckURL,
 		enabled:  options.EnabledHealthCheck,
@@ -91,6 +93,10 @@ func (a *Adapter) Tag() string {
 
 func (a *Adapter) Outbounds() []adapter.Outbound {
 	return a.outbounds
+}
+
+func (a *Adapter) OverrideOptions() *option.ProviderOverrideOptions {
+	return a.override
 }
 
 func (a *Adapter) Outbound(tag string) (adapter.Outbound, bool) {

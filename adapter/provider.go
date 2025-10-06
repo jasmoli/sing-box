@@ -14,6 +14,7 @@ type Provider interface {
 	Tag() string
 	Outbounds() []Outbound
 	Outbound(tag string) (Outbound, bool)
+	OverrideOptions() *option.ProviderOverrideOptions
 	UpdatedAt() time.Time
 	HealthCheck(ctx context.Context) (map[string]uint16, error)
 	RegisterCallback(callback ProviderUpdateCallback) *list.Element[ProviderUpdateCallback]

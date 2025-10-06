@@ -103,7 +103,7 @@ func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory lo
 	updateChan := make(chan struct{})
 	close(updateChan)
 	outProvider := &ProviderRemote{
-		Adapter:  provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeRemote, options.ProviderHealthCheckOptions),
+		Adapter:  provider.NewAdapter(ctx, router, outbound, logFactory, logger, tag, C.ProviderTypeRemote, options.ProviderHealthCheckOptions, options.Override),
 		ctx:      ctx,
 		cancel:   cancel,
 		logger:   logger,
@@ -457,7 +457,7 @@ func (s *ProviderRemote) saveCacheFile(hasInfo bool, info adapter.SubscriptionIn
 }
 
 func (s *ProviderRemote) updateProviderFromContent(content string) error {
-	outboundOpts, err := parser.ParseSubscription(s.ctx, content)
+	outboundOpts, err := parser.ParseSubscription(s.ctx, content, s.OverrideOptions())
 	if err != nil {
 		return err
 	}

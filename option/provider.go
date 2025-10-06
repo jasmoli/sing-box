@@ -47,8 +47,38 @@ func (h *Provider) UnmarshalJSONContext(ctx context.Context, content []byte) err
 }
 
 type ProviderBaseOptions struct {
-	Path     string         `json:"path"`
-	Override *DialerOptions `json:"outbound_override"`
+	Path     string                   `json:"path"`
+	Override *ProviderOverrideOptions `json:"outbound_override"`
+}
+
+type ProviderOverrideOptions struct {
+	TagPrefix string `json:"tag_prefix,omitempty"`
+	TagSuffix string `json:"tag_suffix,omitempty"`
+	*OverrideDialerOptions
+}
+
+type OverrideDialerOptions struct {
+	Detour              *string                            `json:"detour,omitempty"`
+	BindInterface       *string                            `json:"bind_interface,omitempty"`
+	Inet4BindAddress    *badoption.Addr                    `json:"inet4_bind_address,omitempty"`
+	Inet6BindAddress    *badoption.Addr                    `json:"inet6_bind_address,omitempty"`
+	ProtectPath         *string                            `json:"protect_path,omitempty"`
+	RoutingMark         *FwMark                            `json:"routing_mark,omitempty"`
+	ReuseAddr           *bool                              `json:"reuse_addr,omitempty"`
+	NetNs               *string                            `json:"netns,omitempty"`
+	ConnectTimeout      *badoption.Duration                `json:"connect_timeout,omitempty"`
+	TCPFastOpen         *bool                              `json:"tcp_fast_open,omitempty"`
+	TCPMultiPath        *bool                              `json:"tcp_multi_path,omitempty"`
+	UDPFragment         *bool                              `json:"udp_fragment,omitempty"`
+	UDPFragmentDefault  *bool                              `json:"-"`
+	DomainResolver      *DomainResolveOptions              `json:"domain_resolver,omitempty"`
+	NetworkStrategy     *NetworkStrategy                   `json:"network_strategy,omitempty"`
+	NetworkType         *badoption.Listable[InterfaceType] `json:"network_type,omitempty"`
+	FallbackNetworkType *badoption.Listable[InterfaceType] `json:"fallback_network_type,omitempty"`
+	FallbackDelay       *badoption.Duration                `json:"fallback_delay,omitempty"`
+
+	// Deprecated: migrated to domain resolver
+	DomainStrategy *DomainStrategy `json:"domain_strategy,omitempty"`
 }
 
 type ProviderLocalOptions struct {
@@ -68,6 +98,7 @@ type ProviderRemoteOptions struct {
 }
 
 type ProviderInlineOptions struct {
+	ProviderBaseOptions
 	ProviderHealthCheckOptions
 	Outbounds   []Outbound                 `json:"outbounds,omitempty"`
 }

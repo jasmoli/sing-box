@@ -164,3 +164,20 @@ Cache file path, `cache.db` will be used if empty.
 Identifier in cache file.
 
 If not empty, configuration specified data will use a separate store keyed by it.
+
+### Rule API
+
+Rules can be listed and temporarily disabled through the Clash API.
+
+#### GET /rules
+
+Returns all rules. Each rule contains `type`, `payload`, `proxy`, `uuid` and
+`disabled`.
+
+#### PUT /rules/{uuid}
+
+Toggle the disabled status of the rule with the given `uuid`. Returns `404` if
+no rule matches.
+
+Disabled rules are skipped during routing. The status is not persisted and is
+reset on restart.

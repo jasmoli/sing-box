@@ -3,6 +3,7 @@ package rule
 import (
 	"context"
 
+	"github.com/gofrs/uuid/v5"
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -57,8 +58,12 @@ func NewDefaultRule(ctx context.Context, logger log.ContextLogger, options optio
 	if err != nil {
 		return nil, E.Cause(err, "action")
 	}
+	id, _ := uuid.NewV4()
 	rule := &DefaultRule{
 		abstractDefaultRule{
+			abstractRule: abstractRule{
+				uuid: id.String(),
+			},
 			invert: options.Invert,
 			action: action,
 		},
@@ -310,8 +315,12 @@ func NewLogicalRule(ctx context.Context, logger log.ContextLogger, options optio
 	if err != nil {
 		return nil, E.Cause(err, "action")
 	}
+	id, _ := uuid.NewV4()
 	rule := &LogicalRule{
 		abstractLogicalRule{
+			abstractRule: abstractRule{
+				uuid: id.String(),
+			},
 			rules:  make([]adapter.HeadlessRule, len(options.Rules)),
 			invert: options.Invert,
 			action: action,

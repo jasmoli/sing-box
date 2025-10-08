@@ -48,6 +48,7 @@ func (r *ruleSetItemTestRouter) RuleSet(tag string) (adapter.RuleSet, bool) {
 	return ruleSet, loaded
 }
 func (r *ruleSetItemTestRouter) RuleSets() []adapter.RuleSet                { return nil }
+func (r *ruleSetItemTestRouter) Rule(uuid string) (adapter.Rule, bool)      { return nil, false }
 func (r *ruleSetItemTestRouter) Rules() []adapter.Rule                      { return nil }
 func (r *ruleSetItemTestRouter) NeedFindProcess() bool                      { return false }
 func (r *ruleSetItemTestRouter) NeedFindNeighbor() bool                     { return false }

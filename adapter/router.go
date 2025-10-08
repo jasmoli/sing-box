@@ -26,6 +26,7 @@ type Router interface {
 	RuleSet(tag string) (RuleSet, bool)
 	RuleSets() []RuleSet
 	Rules() []Rule
+	Rule(uuid string) (Rule, bool)
 	AppendTracker(tracker ConnectionTracker)
 	ResetNetwork()
 

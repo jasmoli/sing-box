@@ -59,17 +59,99 @@ func (h Provider) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
 	})
 }
 
+type ProviderOverrideOptions struct {
+	TagPrefix string `json:"tag_prefix,omitempty"`
+	TagSuffix string `json:"tag_suffix,omitempty"`
+	*OverrideDialerOptions
+	*OverrideTLSOptions
+}
+
+type OverrideDialerOptions struct {
+	Detour              *string                            `json:"detour,omitempty"`
+	BindInterface       *string                            `json:"bind_interface,omitempty"`
+	Inet4BindAddress    *badoption.Addr                    `json:"inet4_bind_address,omitempty"`
+	Inet6BindAddress    *badoption.Addr                    `json:"inet6_bind_address,omitempty"`
+	ProtectPath         *string                            `json:"protect_path,omitempty"`
+	RoutingMark         *FwMark                            `json:"routing_mark,omitempty"`
+	ReuseAddr           *bool                              `json:"reuse_addr,omitempty"`
+	NetNs               *string                            `json:"netns,omitempty"`
+	ConnectTimeout      *badoption.Duration                `json:"connect_timeout,omitempty"`
+	TCPFastOpen         *bool                              `json:"tcp_fast_open,omitempty"`
+	TCPMultiPath        *bool                              `json:"tcp_multi_path,omitempty"`
+	UDPFragment         *bool                              `json:"udp_fragment,omitempty"`
+	UDPFragmentDefault  *bool                              `json:"-"`
+	DomainResolver      *DomainResolveOptions              `json:"domain_resolver,omitempty"`
+	NetworkStrategy     *NetworkStrategy                   `json:"network_strategy,omitempty"`
+	NetworkType         *badoption.Listable[InterfaceType] `json:"network_type,omitempty"`
+	FallbackNetworkType *badoption.Listable[InterfaceType] `json:"fallback_network_type,omitempty"`
+	FallbackDelay       *badoption.Duration                `json:"fallback_delay,omitempty"`
+
+	// Deprecated: migrated to domain resolver
+	DomainStrategy *DomainStrategy `json:"domain_strategy,omitempty"`
+}
+
+type OverrideTLSOptions struct {
+	Enabled                    *bool                                `json:"enabled,omitempty"`
+	DisableSNI                 *bool                                `json:"disable_sni,omitempty"`
+	ServerName                 *string                              `json:"server_name,omitempty"`
+	Insecure                   *bool                                `json:"insecure,omitempty"`
+	ALPN                       *badoption.Listable[string]          `json:"alpn,omitempty"`
+	MinVersion                 *string                              `json:"min_version,omitempty"`
+	MaxVersion                 *string                              `json:"max_version,omitempty"`
+	CipherSuites               *badoption.Listable[string]          `json:"cipher_suites,omitempty"`
+	CurvePreferences           *badoption.Listable[CurvePreference] `json:"curve_preferences,omitempty"`
+	Certificate                *badoption.Listable[string]          `json:"certificate,omitempty"`
+	CertificatePath            *string                              `json:"certificate_path,omitempty"`
+	CertificatePublicKeySHA256 *badoption.Listable[[]byte]          `json:"certificate_public_key_sha256,omitempty"`
+	ClientCertificate          *badoption.Listable[string]          `json:"client_certificate,omitempty"`
+	ClientCertificatePath      *string                              `json:"client_certificate_path,omitempty"`
+	ClientKey                  *badoption.Listable[string]          `json:"client_key,omitempty"`
+	ClientKeyPath              *string                              `json:"client_key_path,omitempty"`
+	Fragment                   *bool                                `json:"fragment,omitempty"`
+	FragmentFallbackDelay      *badoption.Duration                  `json:"fragment_fallback_delay,omitempty"`
+	RecordFragment             *bool                                `json:"record_fragment,omitempty"`
+	KernelTx                   *bool                                `json:"kernel_tx,omitempty"`
+	KernelRx                   *bool                                `json:"kernel_rx,omitempty"`
+	ECH                        *OverrideECHOptions                  `json:"ech,omitempty"`
+	UTLS                       *OverrideUTLSOptions                 `json:"utls,omitempty"`
+	Reality                    *OverrideRealityOptions              `json:"reality,omitempty"`
+}
+
+type OverrideECHOptions struct {
+	Enabled    *bool                       `json:"enabled,omitempty"`
+	Config     *badoption.Listable[string] `json:"config,omitempty"`
+	ConfigPath *string                     `json:"config_path,omitempty"`
+
+	// Deprecated: not supported by stdlib
+	PQSignatureSchemesEnabled *bool `json:"pq_signature_schemes_enabled,omitempty"`
+	// Deprecated: added by fault
+	DynamicRecordSizingDisabled *bool `json:"dynamic_record_sizing_disabled,omitempty"`
+}
+
+type OverrideUTLSOptions struct {
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Fingerprint *string `json:"fingerprint,omitempty"`
+}
+
+type OverrideRealityOptions struct {
+	Enabled   *bool   `json:"enabled,omitempty"`
+	PublicKey *string `json:"public_key,omitempty"`
+	ShortID   *string `json:"short_id,omitempty"`
+}
+
 type ProviderLocalOptions struct {
 	Path        string                     `json:"path"`
+	Override    *ProviderOverrideOptions   `json:"outbound_override,omitempty"`
 	HealthCheck ProviderHealthCheckOptions `json:"health_check,omitempty"`
 }
 
 type ProviderRemoteOptions struct {
-	Path           string             `json:"path,omitempty"`
-	URL            string             `json:"url"`
-	UserAgent      string             `json:"user_agent,omitempty"`
-	HTTPClient     *HTTPClientOptions `json:"http_client,omitempty"`
-	UpdateInterval badoption.Duration `json:"update_interval,omitempty"`
+	Path           string                   `json:"path,omitempty"`
+	URL            string                   `json:"url"`
+	UserAgent      string                   `json:"user_agent,omitempty"`
+	HTTPClient     *HTTPClientOptions       `json:"http_client,omitempty"`
+	UpdateInterval badoption.Duration       `json:"update_interval,omitempty"`
+	Override       *ProviderOverrideOptions `json:"outbound_override,omitempty"`
 
 	Exclude     *badoption.Regexp          `json:"exclude,omitempty"`
 	Include     *badoption.Regexp          `json:"include,omitempty"`

@@ -38,6 +38,7 @@ type ProviderLocal struct {
 	logger      log.ContextLogger
 	outbound    adapter.OutboundManager
 	path        string
+	override    *option.ProviderOverrideOptions
 	lastOutOpts []option.Outbound
 	lastUpdated time.Time
 	watcher     *fswatch.Watcher
@@ -71,6 +72,7 @@ func NewProviderLocal(ctx context.Context, router adapter.Router, logFactory log
 		cancel:   cancel,
 		logger:   logger,
 		outbound: outbound,
+		override: options.Override,
 	}
 	filePath := filemanager.BasePath(ctx, options.Path)
 	provider.path, _ = filepath.Abs(filePath)
@@ -132,7 +134,7 @@ func (s *ProviderLocal) reloadFile(path string) error {
 	}
 	s.lastUpdated = fileInfo.ModTime()
 	content = []byte(parser.DecodeBase64Safe(string(content)))
-	outboundOpts, err := parser.ParseSubscription(s.ctx, string(content))
+	outboundOpts, err := parser.ParseSubscription(s.ctx, string(content), s.override)
 	if err != nil {
 		return err
 	}

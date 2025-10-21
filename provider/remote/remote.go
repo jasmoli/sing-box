@@ -43,6 +43,7 @@ type ProviderRemote struct {
 	httpClientMgr    adapter.HTTPClientManager
 	httpClientOpts   *option.HTTPClientOptions
 	downloadDetour   string
+	override         *option.ProviderOverrideOptions
 	path             string
 	url              string
 	userAgent        string
@@ -91,6 +92,7 @@ func NewProviderRemote(ctx context.Context, router adapter.Router, logFactory lo
 		outbound:       outbound,
 		httpClientMgr:  httpClientManager,
 		httpClientOpts: options.HTTPClient,
+		override:       options.Override,
 		downloadDetour: options.DownloadDetour,
 		path:           filePath,
 		url:            options.URL,
@@ -396,7 +398,7 @@ func (s *ProviderRemote) loopUpdate() {
 }
 
 func (s *ProviderRemote) updateProviderFromContent(content string) error {
-	outboundOpts, err := parser.ParseSubscription(s.ctx, content)
+	outboundOpts, err := parser.ParseSubscription(s.ctx, content, s.override)
 	if err != nil {
 		return err
 	}

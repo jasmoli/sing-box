@@ -19,6 +19,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental"
 	"github.com/sagernet/sing-box/experimental/clashmode"
+	"github.com/sagernet/sing-box/experimental/observability"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -49,6 +50,7 @@ type Server struct {
 	logger         log.Logger
 	httpServer     *http.Server
 	trafficManager *trafficcontrol.Manager
+	observability  observability.Service
 	urlTestHistory *urltest.HistoryStorage
 	clashMode      *clashmode.Manager
 	logDebug       bool
@@ -87,6 +89,7 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
 			Handler: chiRouter,
 		},
 		trafficManager:           trafficManager,
+		observability:            service.FromContext[observability.Service](ctx),
 		urlTestHistory:           urlTestHistory,
 		clashMode:                clashMode,
 		logDebug:                 logFactory.Level() >= log.LevelDebug,
@@ -121,6 +124,9 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
 		r.Mount("/proxies", proxyRouter(s, s.router))
 		r.Mount("/rules", ruleRouter(s.router))
 		r.Mount("/connections", connectionRouter(s.ctx, s.network, trafficManager))
+		if s.observability != nil {
+			r.Mount("/observability/v1", s.observability.Handler())
+		}
 		r.Mount("/providers/proxies", proxyProviderRouter(s))
 		r.Mount("/providers/rules", ruleProviderRouter(s.router))
 		r.Mount("/script", scriptRouter())

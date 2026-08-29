@@ -166,6 +166,31 @@ func (m *Manager) Default() adapter.Outbound {
 	return m.defaultOutbound
 }
 
+func (m *Manager) Remove(tag string) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	outbound, found := m.outboundByTag[tag]
+	if !found {
+		return os.ErrInvalid
+	}
+	delete(m.outboundByTag, tag)
+	index := common.Index(m.outbounds, func(it adapter.Outbound) bool {
+		return it == outbound
+	})
+	if index == -1 {
+		panic("invalid outbound index")
+	}
+	m.outbounds = append(m.outbounds[:index], m.outbounds[index+1:]...)
+	if m.defaultOutbound == outbound {
+		if len(m.outbounds) > 0 {
+			m.defaultOutbound = m.outbounds[0]
+		} else {
+			m.defaultOutbound = nil
+		}
+	}
+	return nil
+}
+
 func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, inboundType string, options any) error {
 	if tag == "" {
 		return os.ErrInvalid

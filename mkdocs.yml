@@ -109,6 +109,10 @@ nav:
           - FakeIP: configuration/dns/fakeip.md
       - NTP: configuration/ntp/index.md
       - Certificate: configuration/certificate/index.md
+      - Provider:
+          - configuration/provider/index.md
+          - Local: configuration/provider/local.md
+          - Remote: configuration/provider/remote.md
       - Route:
           - configuration/route/index.md
           - GeoIP: configuration/route/geoip.md

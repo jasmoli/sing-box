@@ -20,16 +20,18 @@ import (
 )
 
 var (
-	bucketSelected = []byte("selected")
-	bucketExpand   = []byte("group_expand")
-	bucketMode     = []byte("clash_mode")
-	bucketRuleSet  = []byte("rule_set")
+	bucketSelected     = []byte("selected")
+	bucketExpand       = []byte("group_expand")
+	bucketMode         = []byte("clash_mode")
+	bucketRuleSet      = []byte("rule_set")
+	bucketSubscription = []byte("subscription")
 
 	bucketNameList = []string{
 		string(bucketSelected),
 		string(bucketExpand),
 		string(bucketMode),
 		string(bucketRuleSet),
+		string(bucketSubscription),
 		string(bucketRDRC),
 		string(bucketDNSCache),
 	}
@@ -483,5 +485,38 @@ func (c *CacheFile) SaveRuleSet(tag string, set *adapter.SavedBinary) error {
 			return err
 		}
 		return bucket.Put([]byte(tag), setBinary)
+	})
+}
+
+func (c *CacheFile) LoadSubscription(tag string) *adapter.SavedBinary {
+	var savedSub adapter.SavedBinary
+	err := c.view(func(t *bbolt.Tx) error {
+		bucket := c.bucket(t, bucketSubscription)
+		if bucket == nil {
+			return os.ErrNotExist
+		}
+		subBinary := bucket.Get([]byte(tag))
+		if len(subBinary) == 0 {
+			return os.ErrInvalid
+		}
+		return savedSub.UnmarshalBinary(subBinary)
+	})
+	if err != nil {
+		return nil
+	}
+	return &savedSub
+}
+
+func (c *CacheFile) SaveSubscription(tag string, sub *adapter.SavedBinary) error {
+	return c.batch(func(t *bbolt.Tx) error {
+		bucket, err := c.createBucket(t, bucketSubscription)
+		if err != nil {
+			return err
+		}
+		subBinary, err := sub.MarshalBinary()
+		if err != nil {
+			return err
+		}
+		return bucket.Put([]byte(tag), subBinary)
 	})
 }

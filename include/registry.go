@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/adapter/provider"
 	"github.com/sagernet/sing-box/adapter/service"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
@@ -38,6 +39,8 @@ import (
 	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
+	providerLocal "github.com/sagernet/sing-box/provider/local"
+	"github.com/sagernet/sing-box/provider/remote"
 	"github.com/sagernet/sing-box/service/api"
 	originca "github.com/sagernet/sing-box/service/origin_ca"
 	"github.com/sagernet/sing-box/service/resolved"
@@ -46,7 +49,7 @@ import (
 )
 
 func Context(ctx context.Context) context.Context {
-	return box.Context(ctx, InboundRegistry(), OutboundRegistry(), EndpointRegistry(), DNSTransportRegistry(), ServiceRegistry(), CertificateProviderRegistry())
+	return box.Context(ctx, InboundRegistry(), OutboundRegistry(), EndpointRegistry(), DNSTransportRegistry(), ServiceRegistry(), CertificateProviderRegistry(), ProviderRegistry())
 }
 
 func InboundRegistry() *inbound.Registry {
@@ -163,6 +166,16 @@ func CertificateProviderRegistry() *certificate.Registry {
 	registerACMECertificateProvider(registry)
 	registerTailscaleCertificateProvider(registry)
 	originca.RegisterCertificateProvider(registry)
+
+	return registry
+}
+
+func ProviderRegistry() *provider.Registry {
+	registry := provider.NewRegistry()
+
+	providerLocal.RegisterProviderLocal(registry)
+	providerLocal.RegisterProviderInline(registry)
+	remote.RegisterProviderRemote(registry)
 
 	return registry
 }

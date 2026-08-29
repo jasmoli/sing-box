@@ -13,7 +13,7 @@ Compatible editors can use it for completion and validation.
 
 ```json
 {
-  "$schema": "https://sing-box.sagernet.org/schema.json"
+  "$schema": "https://sing-box.xireiki.com/schema.json"
 }
 ```
 
@@ -25,7 +25,7 @@ The schema URI used by compatible editors.
 This field does not affect sing-box runtime behavior.
 
 The schema published with this documentation is available at
-[sing-box.sagernet.org/schema.json](https://sing-box.sagernet.org/schema.json).
+[sing-box.xireiki.com/schema.json](https://sing-box.xireiki.com/schema.json).
 
 ### Generate
 

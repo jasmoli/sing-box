@@ -25,6 +25,7 @@ type _Options struct {
 	Endpoints            []Endpoint            `json:"endpoints,omitempty"`
 	Inbounds             []Inbound             `json:"inbounds,omitempty"`
 	Outbounds            []Outbound            `json:"outbounds,omitempty"`
+	Providers            []Provider            `json:"providers,omitempty"`
 	Route                *RouteOptions         `json:"route,omitempty"`
 	Services             []Service             `json:"services,omitempty"`
 	Experimental         *ExperimentalOptions  `json:"experimental,omitempty"`
@@ -85,6 +86,10 @@ func checkOptions(options *Options) error {
 	if err != nil {
 		return err
 	}
+	err = checkProviders(options.Providers)
+	if err != nil {
+		return err
+	}
 	err = checkCertificateProviders(options.CertificateProviders)
 	if err != nil {
 		return err
@@ -92,6 +97,21 @@ func checkOptions(options *Options) error {
 	err = checkHTTPClients(options.HTTPClients)
 	if err != nil {
 		return err
+	}
+	return nil
+}
+
+func checkProviders(providers []Provider) error {
+	seen := make(map[string]bool)
+	for i, provider := range providers {
+		tag := provider.Tag
+		if tag == "" {
+			tag = F.ToString(i)
+		}
+		if seen[tag] {
+			return E.New("duplicate provider tag: ", tag)
+		}
+		seen[tag] = true
 	}
 	return nil
 }

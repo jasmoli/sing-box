@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/inbound"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	boxProvider "github.com/sagernet/sing-box/adapter/provider"
 	boxService "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/dialer"
@@ -54,6 +55,7 @@ type Box struct {
 	endpoint            *endpoint.Manager
 	inbound             *inbound.Manager
 	outbound            *outbound.Manager
+	provider            *boxProvider.Manager
 	service             *boxService.Manager
 	certificateProvider *boxCertificate.Manager
 	dnsTransport        *dns.TransportManager
@@ -81,6 +83,7 @@ func Context(
 	dnsTransportRegistry adapter.DNSTransportRegistry,
 	serviceRegistry adapter.ServiceRegistry,
 	certificateProviderRegistry adapter.CertificateProviderRegistry,
+	providerRegistry adapter.ProviderRegistry,
 ) context.Context {
 	if service.FromContext[option.InboundOptionsRegistry](ctx) == nil ||
 		service.FromContext[adapter.InboundRegistry](ctx) == nil {
@@ -109,6 +112,10 @@ func Context(
 		ctx = service.ContextWith[option.CertificateProviderOptionsRegistry](ctx, certificateProviderRegistry)
 		ctx = service.ContextWith[adapter.CertificateProviderRegistry](ctx, certificateProviderRegistry)
 	}
+	if service.FromContext[adapter.ProviderRegistry](ctx) == nil {
+		ctx = service.ContextWith[option.ProviderOptionsRegistry](ctx, providerRegistry)
+		ctx = service.ContextWith[adapter.ProviderRegistry](ctx, providerRegistry)
+	}
 	return ctx
 }
 
@@ -126,6 +133,7 @@ func New(options Options) (*Box, error) {
 	dnsTransportRegistry := service.FromContext[adapter.DNSTransportRegistry](ctx)
 	serviceRegistry := service.FromContext[adapter.ServiceRegistry](ctx)
 	certificateProviderRegistry := service.FromContext[adapter.CertificateProviderRegistry](ctx)
+	providerRegistry := service.FromContext[adapter.ProviderRegistry](ctx)
 
 	if endpointRegistry == nil {
 		return nil, E.New("missing endpoint registry in context")
@@ -144,6 +152,9 @@ func New(options Options) (*Box, error) {
 	}
 	if certificateProviderRegistry == nil {
 		return nil, E.New("missing certificate provider registry in context")
+	}
+	if providerRegistry == nil {
+		return nil, E.New("missing provider registry in context")
 	}
 
 	ctx = pause.WithDefaultManager(ctx)
@@ -216,12 +227,14 @@ func New(options Options) (*Box, error) {
 	dnsTransportManager := dns.NewTransportManager(logFactory.NewLogger("dns/transport"), dnsTransportRegistry, outboundManager, dnsOptions.Final)
 	serviceManager := boxService.NewManager(logFactory.NewLogger("service"), serviceRegistry)
 	certificateProviderManager := boxCertificate.NewManager(logFactory.NewLogger("certificate-provider"), certificateProviderRegistry)
+	providerManager := boxProvider.NewManager(ctx, logFactory.NewLogger("provider"), providerRegistry)
 	service.MustRegister[adapter.EndpointManager](ctx, endpointManager)
 	service.MustRegister[adapter.InboundManager](ctx, inboundManager)
 	service.MustRegister[adapter.OutboundManager](ctx, outboundManager)
 	service.MustRegister[adapter.DNSTransportManager](ctx, dnsTransportManager)
 	service.MustRegister[adapter.ServiceManager](ctx, serviceManager)
 	service.MustRegister[adapter.CertificateProviderManager](ctx, certificateProviderManager)
+	service.MustRegister[adapter.ProviderManager](ctx, providerManager)
 	dnsRouter, err := dns.NewRouter(ctx, logFactory, dnsOptions)
 	if err != nil {
 		return nil, E.Cause(err, "initialize DNS router")
@@ -395,6 +408,25 @@ func New(options Options) (*Box, error) {
 			return nil, E.Cause(err, "initialize certificate provider[", i, "]")
 		}
 	}
+	for i, providerOptions := range options.Providers {
+		var tag string
+		if providerOptions.Tag != "" {
+			tag = providerOptions.Tag
+		} else {
+			tag = F.ToString(i)
+		}
+		err = providerManager.Create(
+			ctx,
+			router,
+			logFactory,
+			tag,
+			providerOptions.Type,
+			providerOptions.Options,
+		)
+		if err != nil {
+			return nil, E.Cause(err, "initialize provider[", i, "]")
+		}
+	}
 	outboundManager.Initialize(func() (adapter.Outbound, error) {
 		return direct.NewOutbound(
 			ctx,
@@ -476,6 +508,7 @@ func New(options Options) (*Box, error) {
 		endpoint:            endpointManager,
 		inbound:             inboundManager,
 		outbound:            outboundManager,
+		provider:            providerManager,
 		dnsTransport:        dnsTransportManager,
 		service:             serviceManager,
 		certificateProvider: certificateProviderManager,
@@ -548,11 +581,11 @@ func (s *Box) preStart() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.ctx, s.logger, adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.inbound, s.endpoint, s.service, s.certificateProvider)
+	err = adapter.Start(s.ctx, s.logger, adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.provider, s.inbound, s.endpoint, s.service, s.certificateProvider)
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.ctx, s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.network, s.connection)
+	err = adapter.Start(s.ctx, s.logger, adapter.StartStateStart, s.outbound, s.provider, s.dnsTransport, s.network, s.connection)
 	if err != nil {
 		return err
 	}
@@ -588,7 +621,7 @@ func (s *Box) start() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.ctx, s.logger, adapter.StartStatePostStart, s.outbound, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.endpoint, s.certificateProvider, s.inbound, s.service)
+	err = adapter.Start(s.ctx, s.logger, adapter.StartStatePostStart, s.outbound, s.provider, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.endpoint, s.certificateProvider, s.inbound, s.service)
 	if err != nil {
 		return err
 	}
@@ -596,7 +629,7 @@ func (s *Box) start() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.ctx, s.logger, adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.endpoint, s.certificateProvider, s.inbound, s.service)
+	err = adapter.Start(s.ctx, s.logger, adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.provider, s.endpoint, s.certificateProvider, s.inbound, s.service)
 	if err != nil {
 		return err
 	}
@@ -629,6 +662,7 @@ func (s *Box) Close() error {
 		{"inbound", s.inbound},
 		{"certificate-provider", s.certificateProvider},
 		{"endpoint", s.endpoint},
+		{"provider", s.provider},
 		{"outbound", s.outbound},
 		{"router", s.router},
 		{"connection", s.connection},

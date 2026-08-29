@@ -20,6 +20,8 @@ type Manager struct {
 	endpoint        adapter.EndpointManager
 	defaultTag      string
 	access          sync.RWMutex
+	scope           *adapter.Scope
+	stage           adapter.StartStage
 	outbounds       []adapter.Outbound
 	outboundByTag   map[string]adapter.Outbound
 	defaultOutbound adapter.Outbound
@@ -63,9 +65,11 @@ func (m *Manager) Initialize(defaultOutboundFallback func() (adapter.Outbound, e
 }
 
 func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
-	m.access.RLock()
+	m.access.Lock()
+	m.scope = scope
+	m.stage = stage
 	sortedOutbounds := m.sortedOutbounds
-	m.access.RUnlock()
+	m.access.Unlock()
 	for _, outbound := range sortedOutbounds {
 		if endpoint, isEndpoint := outbound.(adapter.Endpoint); isEndpoint {
 			if stage == adapter.StartStateStart {
@@ -162,6 +166,37 @@ func (m *Manager) Default() adapter.Outbound {
 	return m.defaultOutbound
 }
 
+func (m *Manager) Remove(tag string) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	outbound, found := m.outboundByTag[tag]
+	if !found {
+		return os.ErrInvalid
+	}
+	delete(m.outboundByTag, tag)
+	index := common.Index(m.outbounds, func(it adapter.Outbound) bool {
+		return it == outbound
+	})
+	if index == -1 {
+		panic("invalid outbound index")
+	}
+	m.outbounds = append(m.outbounds[:index], m.outbounds[index+1:]...)
+	index = common.Index(m.sortedOutbounds, func(it adapter.Outbound) bool {
+		return it == outbound
+	})
+	if index != -1 {
+		m.sortedOutbounds = append(m.sortedOutbounds[:index], m.sortedOutbounds[index+1:]...)
+	}
+	if m.defaultOutbound == outbound {
+		if len(m.outbounds) > 0 {
+			m.defaultOutbound = m.outbounds[0]
+		} else {
+			m.defaultOutbound = nil
+		}
+	}
+	return nil
+}
+
 func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, inboundType string, options any) error {
 	if tag == "" {
 		return os.ErrInvalid
@@ -171,15 +206,44 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		return err
 	}
 	m.access.Lock()
-	defer m.access.Unlock()
 	_, loaded := m.outboundByTag[tag]
 	if loaded {
+		m.access.Unlock()
 		return E.New("duplicate outbound tag: ", tag)
 	}
 	m.outbounds = append(m.outbounds, outbound)
 	m.outboundByTag[tag] = outbound
 	if tag == m.defaultTag || (m.defaultTag == "" && m.defaultOutbound == nil) {
 		m.defaultOutbound = outbound
+	}
+	m.sortedOutbounds = append(m.sortedOutbounds, outbound)
+	scope := m.scope
+	stage := m.stage
+	m.access.Unlock()
+	if scope != nil {
+		err = m.startOutbound(scope, outbound, stage)
+		if err != nil {
+			_ = m.Remove(tag)
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *Manager) startOutbound(scope *adapter.Scope, outbound adapter.Outbound, stage adapter.StartStage) error {
+	lifecycle, isLifecycle := outbound.(adapter.Lifecycle)
+	if !isLifecycle {
+		return nil
+	}
+	name := "outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
+	for _, startStage := range adapter.ListStartStages {
+		if startStage > stage {
+			break
+		}
+		err := scope.Start(name, lifecycle, startStage)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

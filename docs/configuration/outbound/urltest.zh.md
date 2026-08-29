@@ -10,6 +10,12 @@
     "proxy-b",
     "proxy-c"
   ],
+  "providers": [
+    "provider-a"
+  ],
+  "exclude": "beta",
+  "include": "v2ray",
+  "use_all_providers": false,
   "url": "",
   "interval": "",
   "tolerance": 50,
@@ -22,9 +28,23 @@
 
 #### outbounds
 
-==必填==
-
 用于测试的出站标签列表。
+
+#### providers
+
+[出站提供者](/zh/configuration/provider/) 的标签列表。这些提供者的出站会加入分组。
+
+#### exclude
+
+过滤掉出站提供者中标签匹配该正则表达式的出站。
+
+#### include
+
+仅保留出站提供者中标签匹配该正则表达式的出站。
+
+#### use_all_providers
+
+使用配置中的所有出站提供者。
 
 #### url
 

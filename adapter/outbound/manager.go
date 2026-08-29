@@ -20,6 +20,8 @@ type Manager struct {
 	endpoint        adapter.EndpointManager
 	defaultTag      string
 	access          sync.RWMutex
+	scope           *adapter.Scope
+	started         bool
 	outbounds       []adapter.Outbound
 	outboundByTag   map[string]adapter.Outbound
 	defaultOutbound adapter.Outbound
@@ -63,9 +65,15 @@ func (m *Manager) Initialize(defaultOutboundFallback func() (adapter.Outbound, e
 }
 
 func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
-	m.access.RLock()
+	m.access.Lock()
+	if stage == adapter.StartStateInitialize {
+		m.scope = scope
+	}
+	if stage == adapter.StartStateStart {
+		m.started = true
+	}
 	sortedOutbounds := m.sortedOutbounds
-	m.access.RUnlock()
+	m.access.Unlock()
 	for _, outbound := range sortedOutbounds {
 		if endpoint, isEndpoint := outbound.(adapter.Endpoint); isEndpoint {
 			if stage == adapter.StartStateStart {
@@ -170,6 +178,22 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 	if err != nil {
 		return err
 	}
+	m.access.RLock()
+	started := m.started
+	scope := m.scope
+	m.access.RUnlock()
+	if started {
+		lifecycle, isLifecycle := outbound.(adapter.Lifecycle)
+		if isLifecycle {
+			name := "outbound/" + outbound.Type() + "[" + outbound.Tag() + "]"
+			for _, stage := range adapter.ListStartStages {
+				err = scope.Start(name, lifecycle, stage)
+				if err != nil {
+					return E.Cause(err, stage, " ", name)
+				}
+			}
+		}
+	}
 	m.access.Lock()
 	defer m.access.Unlock()
 	_, loaded := m.outboundByTag[tag]
@@ -182,4 +206,30 @@ func (m *Manager) Create(ctx context.Context, router adapter.Router, logger log.
 		m.defaultOutbound = outbound
 	}
 	return nil
+}
+
+// shortcut: removed outbounds keep their scope cleanup until shutdown, revisit if providers update frequently with resource-holding outbounds.
+func (m *Manager) Remove(tag string) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+	outbound, found := m.outboundByTag[tag]
+	if !found {
+		return os.ErrInvalid
+	}
+	delete(m.outboundByTag, tag)
+	index := common.Index(m.outbounds, func(it adapter.Outbound) bool {
+		return it == outbound
+	})
+	if index == -1 {
+		panic("invalid outbound index")
+	}
+	m.outbounds = append(m.outbounds[:index], m.outbounds[index+1:]...)
+	if m.defaultOutbound == outbound {
+		if len(m.outbounds) > 0 {
+			m.defaultOutbound = m.outbounds[0]
+		} else {
+			m.defaultOutbound = nil
+		}
+	}
+	return common.Close(outbound)
 }

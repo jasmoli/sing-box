@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"net"
+	"regexp"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,6 +49,15 @@ type URLTest struct {
 	group                        *URLTestGroup
 	checkAccess                  sync.Mutex
 	interruptExternalConnections bool
+
+	provider       adapter.ProviderManager
+	providers      map[string]adapter.Provider
+	outboundsCache map[string][]adapter.Outbound
+
+	providerTags    []string
+	exclude         *regexp.Regexp
+	include         *regexp.Regexp
+	useAllProviders bool
 }
 
 func NewURLTest(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.URLTestOutboundOptions) (adapter.Outbound, error) {
@@ -63,14 +73,44 @@ func NewURLTest(ctx context.Context, router adapter.Router, logger log.ContextLo
 		tolerance:                    options.Tolerance,
 		idleTimeout:                  time.Duration(options.IdleTimeout),
 		interruptExternalConnections: options.InterruptExistConnections,
+
+		provider:       service.FromContext[adapter.ProviderManager](ctx),
+		providers:      make(map[string]adapter.Provider),
+		outboundsCache: make(map[string][]adapter.Outbound),
+
+		providerTags:    options.Providers,
+		exclude:         (*regexp.Regexp)(options.Exclude),
+		include:         (*regexp.Regexp)(options.Include),
+		useAllProviders: options.UseAllProviders,
 	}
-	if len(outbound.tags) == 0 {
-		return nil, E.New("missing tags")
+	if len(outbound.tags) == 0 && len(outbound.providerTags) == 0 && !outbound.useAllProviders {
+		return nil, E.New("missing outbound and provider tags")
 	}
 	return outbound, nil
 }
 
 func (s *URLTest) Start() error {
+	if s.useAllProviders {
+		var providerTags []string
+		for _, provider := range s.provider.Providers() {
+			providerTags = append(providerTags, provider.Tag())
+			s.providers[provider.Tag()] = provider
+			provider.RegisterCallback(s.onProviderUpdated)
+		}
+		s.providerTags = providerTags
+	} else {
+		for i, tag := range s.providerTags {
+			provider, loaded := s.provider.Get(tag)
+			if !loaded {
+				return E.New("outbound provider ", i, " not found: ", tag)
+			}
+			s.providers[tag] = provider
+			provider.RegisterCallback(s.onProviderUpdated)
+		}
+	}
+	if len(s.tags) == 0 && len(s.providerTags) == 0 {
+		return E.New("missing outbound and provider tags")
+	}
 	outbounds := make([]adapter.Outbound, 0, len(s.tags))
 	for i, tag := range s.tags {
 		detour, loaded := s.outbound.Outbound(tag)
@@ -78,6 +118,12 @@ func (s *URLTest) Start() error {
 			return E.New("outbound ", i, " not found: ", tag)
 		}
 		outbounds = append(outbounds, detour)
+	}
+	if len(s.tags) == 0 {
+		if detour := fallbackOutbound(s.outbound, s.Tag()); detour != nil {
+			s.tags = append(s.tags, detour.Tag())
+			outbounds = append(outbounds, detour)
+		}
 	}
 	group, err := NewURLTestGroup(s.ctx, s.outbound, s.logger, outbounds, s.link, s.interval, s.tolerance, s.idleTimeout, s.interruptExternalConnections)
 	if err != nil {
@@ -121,6 +167,56 @@ func (s *URLTest) CheckOutbounds() {
 
 func (s *URLTest) PerformUpdateCheck() {
 	s.group.performUpdateCheck()
+}
+
+func (s *URLTest) onProviderUpdated(tag string) error {
+	_, loaded := s.providers[tag]
+	if !loaded {
+		return E.New(s.Tag(), ": ", "outbound provider not found: ", tag)
+	}
+	var (
+		tags      = s.Dependencies()
+		outbounds []adapter.Outbound
+	)
+	for _, tag := range tags {
+		detour, _ := s.outbound.Outbound(tag)
+		outbounds = append(outbounds, detour)
+	}
+	for _, providerTag := range s.providerTags {
+		if providerTag != tag && s.outboundsCache[providerTag] != nil {
+			for _, detour := range s.outboundsCache[providerTag] {
+				tags = append(tags, detour.Tag())
+				outbounds = append(outbounds, detour)
+			}
+			continue
+		}
+		provider := s.providers[providerTag]
+		var cache []adapter.Outbound
+		for _, detour := range provider.Outbounds() {
+			detourTag := detour.Tag()
+			if s.exclude != nil && s.exclude.MatchString(detourTag) {
+				continue
+			}
+			if s.include != nil && !s.include.MatchString(detourTag) {
+				continue
+			}
+			tags = append(tags, detourTag)
+			cache = append(cache, detour)
+			outbounds = append(outbounds, detour)
+		}
+		s.outboundsCache[providerTag] = cache
+	}
+	if len(tags) == 0 {
+		if detour := fallbackOutbound(s.outbound, s.Tag()); detour != nil {
+			tags = append(tags, detour.Tag())
+			outbounds = append(outbounds, detour)
+		}
+	}
+	s.tags = tags
+	if s.group != nil {
+		s.group.updateOutbounds(outbounds)
+	}
+	return nil
 }
 
 func (s *URLTest) InterfaceUpdated(ctx context.Context) {
@@ -260,6 +356,13 @@ func (g *URLTestGroup) PostStart() {
 	g.started = true
 	g.lastActive.Store(time.Now())
 	go g.CheckOutbounds(g.ctx, false)
+}
+
+func (g *URLTestGroup) updateOutbounds(outbounds []adapter.Outbound) {
+	g.access.Lock()
+	g.outbounds = outbounds
+	g.access.Unlock()
+	go g.CheckOutbounds(g.ctx, true)
 }
 
 func (g *URLTestGroup) Touch() {

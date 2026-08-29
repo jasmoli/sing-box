@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"net"
+	"regexp"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
@@ -42,11 +43,20 @@ type Selector struct {
 	history                      *urltest.HistoryStorage
 	interruptGroup               *interrupt.Group
 	interruptExternalConnections bool
+
+	provider       adapter.ProviderManager
+	providers      map[string]adapter.Provider
+	outboundsCache map[string][]adapter.Outbound
+
+	providerTags    []string
+	exclude         *regexp.Regexp
+	include         *regexp.Regexp
+	useAllProviders bool
 }
 
 func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SelectorOutboundOptions) (adapter.Outbound, error) {
 	outbound := &Selector{
-		Adapter:                      outbound.NewAdapter(C.TypeSelector, tag, nil, options.Outbounds),
+		Adapter:                      outbound.NewAdapter(C.TypeSelector, tag, []string{N.NetworkTCP, N.NetworkUDP}, options.Outbounds),
 		ctx:                          ctx,
 		outbound:                     service.FromContext[adapter.OutboundManager](ctx),
 		connection:                   service.FromContext[adapter.ConnectionManager](ctx),
@@ -57,9 +67,18 @@ func NewSelector(ctx context.Context, router adapter.Router, logger log.ContextL
 		history:                      service.PtrFromContext[urltest.HistoryStorage](ctx),
 		interruptGroup:               interrupt.NewGroup(),
 		interruptExternalConnections: options.InterruptExistConnections,
+
+		provider:       service.FromContext[adapter.ProviderManager](ctx),
+		providers:      make(map[string]adapter.Provider),
+		outboundsCache: make(map[string][]adapter.Outbound),
+
+		providerTags:    options.Providers,
+		exclude:         (*regexp.Regexp)(options.Exclude),
+		include:         (*regexp.Regexp)(options.Include),
+		useAllProviders: options.UseAllProviders,
 	}
-	if len(outbound.tags) == 0 {
-		return nil, E.New("missing tags")
+	if len(outbound.tags) == 0 && len(outbound.providerTags) == 0 && !outbound.useAllProviders {
+		return nil, E.New("missing outbound and provider tags")
 	}
 	return outbound, nil
 }
@@ -72,7 +91,39 @@ func (s *Selector) Network() []string {
 	return selected.Network()
 }
 
+func fallbackOutbound(outboundManager adapter.OutboundManager, selfTag string) adapter.Outbound {
+	if detour, loaded := outboundManager.Outbound("direct"); loaded {
+		return detour
+	}
+	if detour := outboundManager.Default(); detour != nil && detour.Tag() != selfTag {
+		return detour
+	}
+	return nil
+}
+
 func (s *Selector) Start() error {
+	if s.useAllProviders {
+		var providerTags []string
+		for _, provider := range s.provider.Providers() {
+			providerTags = append(providerTags, provider.Tag())
+			s.providers[provider.Tag()] = provider
+			provider.RegisterCallback(s.onProviderUpdated)
+		}
+		s.providerTags = providerTags
+	} else {
+		for i, tag := range s.providerTags {
+			provider, loaded := s.provider.Get(tag)
+			if !loaded {
+				return E.New("outbound provider ", i, " not found: ", tag)
+			}
+			s.providers[tag] = provider
+			provider.RegisterCallback(s.onProviderUpdated)
+		}
+	}
+	if len(s.tags) == 0 && len(s.providerTags) == 0 {
+		return E.New("missing outbound and provider tags")
+	}
+
 	for i, tag := range s.tags {
 		detour, loaded := s.outbound.Outbound(tag)
 		if !loaded {
@@ -80,31 +131,19 @@ func (s *Selector) Start() error {
 		}
 		s.outbounds[tag] = detour
 	}
-
-	if s.Tag() != "" {
-		cacheFile := service.FromContext[adapter.CacheFile](s.ctx)
-		if cacheFile != nil {
-			selected := cacheFile.LoadSelected(s.Tag())
-			if selected != "" {
-				detour, loaded := s.outbounds[selected]
-				if loaded {
-					s.selected.Store(detour)
-					return nil
-				}
-			}
+	if len(s.tags) == 0 {
+		if detour := fallbackOutbound(s.outbound, s.Tag()); detour != nil {
+			s.tags = append(s.tags, detour.Tag())
+			s.outbounds[detour.Tag()] = detour
 		}
 	}
-
-	if s.defaultTag != "" {
-		detour, loaded := s.outbounds[s.defaultTag]
-		if !loaded {
-			return E.New("default outbound not found: ", s.defaultTag)
-		}
-		s.selected.Store(detour)
-		return nil
+	outbound, err := s.outboundSelect()
+	if err != nil {
+		return err
 	}
-
-	s.selected.Store(s.outbounds[s.tags[0]])
+	if outbound != nil {
+		s.selected.Store(outbound)
+	}
 	return nil
 }
 
@@ -145,7 +184,11 @@ func (s *Selector) SelectOutbound(tag string) bool {
 }
 
 func (s *Selector) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	conn, err := s.selected.Load().DialContext(ctx, network, destination)
+	selected := s.selected.Load()
+	if selected == nil {
+		return nil, E.New("missing selected outbound")
+	}
+	conn, err := selected.DialContext(ctx, network, destination)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +196,11 @@ func (s *Selector) DialContext(ctx context.Context, network string, destination 
 }
 
 func (s *Selector) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
-	conn, err := s.selected.Load().ListenPacket(ctx, destination)
+	selected := s.selected.Load()
+	if selected == nil {
+		return nil, E.New("missing selected outbound")
+	}
+	conn, err := selected.ListenPacket(ctx, destination)
 	if err != nil {
 		return nil, err
 	}
@@ -163,6 +210,10 @@ func (s *Selector) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 func (s *Selector) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.selected.Load()
+	if selected == nil {
+		conn.Close()
+		return
+	}
 	if outboundHandler, isHandler := selected.(adapter.ConnectionHandler); isHandler {
 		outboundHandler.NewConnection(ctx, conn, metadata, onClose)
 	} else {
@@ -173,11 +224,96 @@ func (s *Selector) NewConnection(ctx context.Context, conn net.Conn, metadata ad
 func (s *Selector) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	ctx = interrupt.ContextWithIsExternalConnection(ctx)
 	selected := s.selected.Load()
+	if selected == nil {
+		conn.Close()
+		return
+	}
 	if outboundHandler, isHandler := selected.(adapter.PacketConnectionHandler); isHandler {
 		outboundHandler.NewPacketConnection(ctx, conn, metadata, onClose)
 	} else {
 		s.connection.NewPacketConnection(ctx, selected, conn, metadata, onClose)
 	}
+}
+
+func (s *Selector) onProviderUpdated(tag string) error {
+	_, loaded := s.providers[tag]
+	if !loaded {
+		return E.New(s.Tag(), ": ", "outbound provider not found: ", tag)
+	}
+	var (
+		tags          = s.Dependencies()
+		outboundByTag = make(map[string]adapter.Outbound)
+	)
+	for _, tag := range tags {
+		outboundByTag[tag] = s.outbounds[tag]
+	}
+	for _, providerTag := range s.providerTags {
+		if providerTag != tag && s.outboundsCache[providerTag] != nil {
+			for _, detour := range s.outboundsCache[providerTag] {
+				tags = append(tags, detour.Tag())
+				outboundByTag[detour.Tag()] = detour
+			}
+			continue
+		}
+		provider := s.providers[providerTag]
+		var cache []adapter.Outbound
+		for _, detour := range provider.Outbounds() {
+			detourTag := detour.Tag()
+			if s.exclude != nil && s.exclude.MatchString(detourTag) {
+				continue
+			}
+			if s.include != nil && !s.include.MatchString(detourTag) {
+				continue
+			}
+			tags = append(tags, detourTag)
+			cache = append(cache, detour)
+			outboundByTag[detourTag] = detour
+		}
+		s.outboundsCache[providerTag] = cache
+	}
+	if len(tags) == 0 {
+		if detour := fallbackOutbound(s.outbound, s.Tag()); detour != nil {
+			tags = append(tags, detour.Tag())
+			outboundByTag[detour.Tag()] = detour
+		}
+	}
+	s.tags, s.outbounds = tags, outboundByTag
+	detour, _ := s.outboundSelect()
+	if detour != nil && s.selected.Swap(detour) != detour {
+		s.interruptGroup.Interrupt(s.interruptExternalConnections)
+	}
+	if s.history != nil {
+		s.history.NotifyUpdated()
+	}
+	return nil
+}
+
+func (s *Selector) outboundSelect() (adapter.Outbound, error) {
+	if len(s.outbounds) == 0 {
+		return nil, nil
+	}
+	if s.Tag() != "" {
+		cacheFile := service.FromContext[adapter.CacheFile](s.ctx)
+		if cacheFile != nil {
+			selected := cacheFile.LoadSelected(s.Tag())
+			if selected != "" {
+				detour, loaded := s.outbounds[selected]
+				if loaded {
+					return detour, nil
+				}
+			}
+		}
+	}
+
+	if s.defaultTag != "" {
+		detour, loaded := s.outbounds[s.defaultTag]
+		if !loaded {
+			return s.outbounds[s.tags[0]], nil
+		}
+		return detour, nil
+	}
+
+	return s.outbounds[s.tags[0]], nil
 }
 
 func RealTag(outboundManager adapter.OutboundManager, detour adapter.Outbound) string {

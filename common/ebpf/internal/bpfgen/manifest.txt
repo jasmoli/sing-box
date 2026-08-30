@@ -6,6 +6,6 @@ bpf2go: v0.22.1-0.20260724091036-00feb08ae4e5
 clang: Android (13989888, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)
 acef2ae96d9657f06d0533ced13e39509f624074cbcf46197c2ed9909c5844b1  native/bpf_compat.h
 6056c5f34750f2d6d85ae1da2bfd96861c10c84558924723d0153627592f4ed7  native/private_address.h
-68800252b199825e6fe15d907313b0350c29d236b2f980b4e188a6fb84051707  native/tc.bpf.c
-06c0ba49515972688bbea0b2c1dc7d233b9f1ad46c52aa9f637593ccc53f96a1  internal/bpfgen/tc_bpfeb.o
-61ecdd03aa00c1e4ef27bba5ad4506b852b8ea0c2fda88bc83118158e37903a3  internal/bpfgen/tc_bpfel.o
+3645c9bba695b209e0a01d53d30f5aa5a95661553bdd1fa8197b9b8654308fb1  native/tc.bpf.c
+8893d42ab4756db9cd385aec23c4dce4be0476565ecceeb88fbc7fc39326ead3  internal/bpfgen/tc_bpfeb.o
+bd1835c9eaf302a0f1d32e4cdd9d97f6d71fa837049fa97f392012b236cbe8dc  internal/bpfgen/tc_bpfel.o

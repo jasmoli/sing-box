@@ -51,6 +51,10 @@
 #define SB_TC_FLAG_HOST_IPV4 (1U << 16)
 #define SB_TC_FLAG_HOST_IPV6 (1U << 17)
 #define SB_TC_FLAG_SHARED_IPV6 (1U << 18)
+#define SB_TC_FLAG_SOCKET_POLICY (1U << 19)
+
+#define SB_TC_SOCKET_POLICY_BYPASS 1U
+#define SB_TC_SOCKET_POLICY_INTERCEPT 2U
 
 #define SB_TC_DNS_HIJACK 0U
 #define SB_TC_DNS_RESPECT_POLICY 1U
@@ -193,6 +197,7 @@ MAP(tc_control, __u32, struct sb_tc_control, BPF_MAP_TYPE_ARRAY, 1U);
 MAP(tc_listener_sockets, __u32, __u32, BPF_MAP_TYPE_SOCKMAP, SB_TC_LISTENER_COUNT);
 MAP(tc_assignment, struct sb_tc_assign_key, struct sb_tc_assign_value, BPF_MAP_TYPE_LRU_HASH, 65536U);
 MAP(tc_self_sockets, __u64, __u32, BPF_MAP_TYPE_LRU_HASH, 65536U);
+MAP(tc_socket_policy, __u64, __u8, BPF_MAP_TYPE_LRU_HASH, 65536U);
 MAP(tc_uid_policy, struct sb_tc_uid_key, __u8, BPF_MAP_TYPE_LPM_TRIE, 4096U);
 MAP(tc_bypass_ipv4, struct sb_tc_ipv4_lpm_key, __u8, BPF_MAP_TYPE_LPM_TRIE, 65536U);
 MAP(tc_bypass_ipv6, struct sb_tc_ipv6_lpm_key, __u8, BPF_MAP_TYPE_LPM_TRIE, 65536U);
@@ -271,6 +276,12 @@ INLINE bool uid_bypassed(struct __sk_buff *skb, const struct sb_tc_control *cont
     __builtin_memcpy(key.uid, &uid, sizeof(uid));
     bool matched = map_lookup(&tc_uid_policy, &key) != 0;
     return (control->flags & SB_TC_FLAG_UID_DEFAULT_BYPASS) != 0U ? !matched : matched;
+}
+
+INLINE __u8 socket_policy(__u64 socket_cookie, const struct sb_tc_control *control) {
+    if ((control->flags & SB_TC_FLAG_SOCKET_POLICY) == 0U || socket_cookie == 0U) return 0U;
+    __u8 *policy = map_lookup(&tc_socket_policy, &socket_cookie);
+    return policy != 0 ? *policy : 0U;
 }
 
 INLINE bool dns_selected(__u8 protocol, __u16 destination_port, __u16 mode) {
@@ -356,11 +367,12 @@ INLINE bool source_mac_selected(const struct sb_tc_control *control, const __u8 
 }
 
 INLINE bool local_selected(struct __sk_buff *skb, const struct sb_tc_control *control,
-    const struct sb_tc_assign_key *key) {
+    const struct sb_tc_assign_key *key, __u8 precomputed_policy) {
     if (fakeip_destination(control, key)) return true;
     if (dns_bypassed(key->protocol, key->destination_port, control->local_dns_mode)) return false;
     if (dns_selected(key->protocol, key->destination_port, control->local_dns_mode)) return true;
-    if (uid_bypassed(skb, control)) return false;
+    if (precomputed_policy == SB_TC_SOCKET_POLICY_BYPASS) return false;
+    if (precomputed_policy != SB_TC_SOCKET_POLICY_INTERCEPT && uid_bypassed(skb, control)) return false;
     if (key->destination_port == 53U && control->local_dns_mode == SB_TC_DNS_RESPECT_POLICY) return true;
     if (host_destination(control, key)) return false;
     if ((control->flags & SB_TC_FLAG_LOCAL_BYPASS_PRIVATE) != 0U && private_destination(key)) return false;
@@ -708,7 +720,7 @@ INLINE int local_egress_mark(struct __sk_buff *skb, bool ethernet, bool track_pr
     struct sb_tc_assign_key key;
     __u8 source_mac[6];
     if (!parse_flow(skb, control, SB_TC_FLAG_LOCAL_IPV6, ethernet, &key, source_mac)) return TC_ACT_UNSPEC;
-    if (!local_selected(skb, control, &key)) return TC_ACT_UNSPEC;
+    if (!local_selected(skb, control, &key, socket_policy(socket_cookie, control))) return TC_ACT_UNSPEC;
     if (track_process) record_local_socket_cookie(&key, socket_cookie);
     return redirect_local(skb, control, ethernet);
 }

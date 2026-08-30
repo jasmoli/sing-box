@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	CiliumEBPF "github.com/cilium/ebpf"
 	"github.com/sagernet/sing-box/adapter"
 	commonEBPF "github.com/sagernet/sing-box/common/ebpf"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -72,7 +73,13 @@ func (i *Inbound) startTCInbound() error {
 		IncludeSourceMAC:    i.sharedIncludeMAC,
 		ExcludeSourceMAC:    i.sharedExcludeMAC,
 		SelfBypassMap:       i.selfBypass.Map(),
-		TrackProcess:        i.processTracker != nil,
+		SocketPolicyMap: func() *CiliumEBPF.Map {
+			if i.processTracker == nil {
+				return nil
+			}
+			return i.processTracker.SocketPolicyMap()
+		}(),
+		TrackProcess: i.processTracker != nil,
 	}
 	backend, err := commonEBPF.PrepareTC(backendConfig)
 	if err != nil && i.processTracker != nil {
@@ -155,9 +162,10 @@ func (i *Inbound) startProcessTracker() {
 		return
 	}
 	tracker, err := commonEBPF.AttachProcessTracker(commonEBPF.ProcessTrackerConfig{
-		EnableTCP:  i.enableTCP,
-		EnableUDP:  i.enableUDP,
-		EnableIPv6: i.localIPv6,
+		EnableTCP:   i.enableTCP,
+		EnableUDP:   i.enableUDP,
+		EnableIPv6:  i.localIPv6,
+		LocalPolicy: i.localPolicy,
 	})
 	if err != nil {
 		i.logger.Debug("eBPF cgroup process tracking unavailable; using userspace process search: ", err)

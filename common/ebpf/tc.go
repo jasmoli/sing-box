@@ -39,6 +39,7 @@ const (
 )
 
 const tcFlagSharedIPv6 = 1 << 18
+const tcFlagSocketPolicy = 1 << 19
 
 const (
 	tcListenerTCP4 = iota
@@ -71,6 +72,7 @@ type TCConfig struct {
 	ExcludeSourceMAC    []MACAddress
 	RoutingMark         uint32
 	SelfBypassMap       *CiliumEBPF.Map
+	SocketPolicyMap     *CiliumEBPF.Map
 	TrackProcess        bool
 }
 
@@ -115,17 +117,18 @@ type tcRuntime struct {
 }
 
 type TCBackend struct {
-	access          sync.RWMutex
-	runtime         *tcRuntime
-	tcpListenerMap  bool
-	control         tcControl
-	controlMapFD    int
-	assignmentMapFD int
-	selfMapExternal bool
-	bypassIPv4      []netip.Prefix
-	bypassIPv6      []netip.Prefix
-	hostIPv4        [][4]byte
-	hostIPv6        [][16]byte
+	access               sync.RWMutex
+	runtime              *tcRuntime
+	tcpListenerMap       bool
+	control              tcControl
+	controlMapFD         int
+	assignmentMapFD      int
+	selfMapExternal      bool
+	socketPolicyExternal bool
+	bypassIPv4           []netip.Prefix
+	bypassIPv6           []netip.Prefix
+	hostIPv4             [][4]byte
+	hostIPv6             [][16]byte
 }
 
 func PrepareTC(config TCConfig) (*TCBackend, error) {
@@ -202,6 +205,11 @@ func prepareTC(config TCConfig, forceLegacyTCP bool) (*TCBackend, error) {
 		mapOverrides["tc_self_sockets"] = mapSpecOverride{
 			name: "sb_self_sockets", mapType: CiliumEBPF.LRUHash, maxEntries: selfBypassSocketCapacity,
 		}
+		if config.SocketPolicyMap != nil {
+			mapOverrides["tc_socket_policy"] = mapSpecOverride{
+				name: "sb_socket_policy", mapType: CiliumEBPF.LRUHash, maxEntries: processSocketOwnerCapacity,
+			}
+		}
 	}
 	legacyTCP := forceLegacyTCP || !config.EnableTCP
 	maps, loadedPrograms, err := loadTCResources(config, mapOverrides, legacyTCP)
@@ -243,12 +251,13 @@ func prepareTC(config TCConfig, forceLegacyTCP bool) (*TCBackend, error) {
 		controlValue.FakeIPIPv6Mask = prefixMask16(fakeIPIPv6.Bits())
 	}
 	backend := &TCBackend{
-		runtime:         &tcRuntime{maps: maps, programs: loadedPrograms},
-		tcpListenerMap:  config.EnableTCP && !legacyTCP,
-		control:         controlValue,
-		controlMapFD:    maps["tc_control"].FD(),
-		assignmentMapFD: maps["tc_assignment"].FD(),
-		selfMapExternal: config.EnableLocal && config.SelfBypassMap != nil,
+		runtime:              &tcRuntime{maps: maps, programs: loadedPrograms},
+		tcpListenerMap:       config.EnableTCP && !legacyTCP,
+		control:              controlValue,
+		controlMapFD:         maps["tc_control"].FD(),
+		assignmentMapFD:      maps["tc_assignment"].FD(),
+		selfMapExternal:      config.EnableLocal && config.SelfBypassMap != nil,
+		socketPolicyExternal: config.EnableLocal && config.SocketPolicyMap != nil,
 	}
 	if err = backend.updateControlLocked(); err != nil {
 		_ = backend.Close()
@@ -302,9 +311,15 @@ func loadTCResources(config TCConfig, baseOverrides map[string]mapSpecOverride, 
 		return nil, nil, err
 	}
 	externalSelfMap := config.EnableLocal && config.SelfBypassMap != nil
+	externalSocketPolicyMap := config.EnableLocal && config.SocketPolicyMap != nil
 	if externalSelfMap {
 		createdMap := maps["tc_self_sockets"]
 		maps["tc_self_sockets"] = config.SelfBypassMap
+		_ = createdMap.Close()
+	}
+	if externalSocketPolicyMap {
+		createdMap := maps["tc_socket_policy"]
+		maps["tc_socket_policy"] = config.SocketPolicyMap
 		_ = createdMap.Close()
 	}
 	selections := make([]programSelection, 0, tcProgramCount)
@@ -352,6 +367,9 @@ func loadTCResources(config TCConfig, baseOverrides map[string]mapSpecOverride, 
 	if err != nil {
 		if externalSelfMap {
 			delete(maps, "tc_self_sockets")
+		}
+		if externalSocketPolicyMap {
+			delete(maps, "tc_socket_policy")
 		}
 		_ = closeMaps(maps)
 		return nil, nil, err
@@ -409,6 +427,9 @@ func tcFlags(config TCConfig, uidPolicy bool, uidDefaultBypass bool) uint32 {
 	}
 	if config.SharedBypassPrivate {
 		flags |= 1 << 7
+	}
+	if config.SocketPolicyMap != nil {
+		flags |= tcFlagSocketPolicy
 	}
 	return flags
 }
@@ -704,11 +725,15 @@ func (b *TCBackend) Close() error {
 	if b.selfMapExternal {
 		delete(b.runtime.maps, "tc_self_sockets")
 	}
+	if b.socketPolicyExternal {
+		delete(b.runtime.maps, "tc_socket_policy")
+	}
 	closeErr = E.Errors(closeErr, closeMaps(b.runtime.maps))
 	b.runtime = nil
 	b.controlMapFD = -1
 	b.assignmentMapFD = -1
 	b.selfMapExternal = false
+	b.socketPolicyExternal = false
 	b.bypassIPv4 = nil
 	b.bypassIPv6 = nil
 	b.hostIPv4 = nil

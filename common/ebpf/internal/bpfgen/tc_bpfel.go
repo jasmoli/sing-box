@@ -30,6 +30,7 @@ const (
 	TCMapTcIncludeSourceMac                    = "tc_include_source_mac"
 	TCMapTcListenerSockets                     = "tc_listener_sockets"
 	TCMapTcSelfSockets                         = "tc_self_sockets"
+	TCMapTcSocketPolicy                        = "tc_socket_policy"
 	TCMapTcUidPolicy                           = "tc_uid_policy"
 	TCProgSingboxTcDeliveryIngress             = "singbox_tc_delivery_ingress"
 	TCProgSingboxTcDeliveryIngressLegacy       = "singbox_tc_delivery_ingress_legacy"
@@ -121,6 +122,7 @@ type TCMapSpecs struct {
 	TcIncludeSourceMac  *ebpf.MapSpec `ebpf:"tc_include_source_mac"`
 	TcListenerSockets   *ebpf.MapSpec `ebpf:"tc_listener_sockets"`
 	TcSelfSockets       *ebpf.MapSpec `ebpf:"tc_self_sockets"`
+	TcSocketPolicy      *ebpf.MapSpec `ebpf:"tc_socket_policy"`
 	TcUidPolicy         *ebpf.MapSpec `ebpf:"tc_uid_policy"`
 }
 
@@ -164,6 +166,7 @@ type TCMaps struct {
 	TcIncludeSourceMac  *ebpf.Map `ebpf:"tc_include_source_mac"`
 	TcListenerSockets   *ebpf.Map `ebpf:"tc_listener_sockets"`
 	TcSelfSockets       *ebpf.Map `ebpf:"tc_self_sockets"`
+	TcSocketPolicy      *ebpf.Map `ebpf:"tc_socket_policy"`
 	TcUidPolicy         *ebpf.Map `ebpf:"tc_uid_policy"`
 }
 
@@ -183,6 +186,7 @@ func (m *TCMaps) Close() error {
 		m.TcIncludeSourceMac,
 		m.TcListenerSockets,
 		m.TcSelfSockets,
+		m.TcSocketPolicy,
 		m.TcUidPolicy,
 	)
 }

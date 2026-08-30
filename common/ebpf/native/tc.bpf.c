@@ -575,7 +575,7 @@ NOINLINE int assign_socket(struct __sk_buff *skb, const struct sb_tc_control *co
     long result = sk_assign(skb, socket, 0U);
     sk_release(socket);
     if (result != 0) {
-        map_delete(&tc_assignment, key);
+        map_delete(&tc_assignment, &assignment_key);
         return TC_ACT_SHOT;
     }
     return TC_ACT_OK;

@@ -175,6 +175,19 @@ func (p *udpReplySocketPool) close() error {
 	if !p.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	return p.closeSockets()
+}
+
+// reset closes sockets tied to the previous network path while keeping the
+// pool usable for the next interface generation.
+func (p *udpReplySocketPool) reset() error {
+	if p == nil || p.closed.Load() {
+		return nil
+	}
+	return p.closeSockets()
+}
+
+func (p *udpReplySocketPool) closeSockets() error {
 	var closeErr error
 	for index := range p.shards {
 		shard := &p.shards[index]

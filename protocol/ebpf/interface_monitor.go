@@ -225,7 +225,7 @@ func (i *Inbound) updateTCInterfaces(ctx context.Context) {
 		return
 	}
 	if i.localEnabled && localInterface == "" {
-		i.interfaceWarnings.defaultInterface.warn(i.logger, "default interface unavailable; local TC eBPF interception is paused")
+		i.interfaceWarnings.defaultInterface.warn(i.logger, "default interface unavailable; retaining previous local TC attachment")
 	}
 	sharedInterfaces := activeSharedInterfaces(i.sharedOptions.Interface, defaultInterface)
 	infrastructureChanged, err := i.repairTCInfrastructure()
@@ -248,16 +248,23 @@ func (i *Inbound) updateTCInterfaces(ctx context.Context) {
 		}
 		return
 	}
+	previousAttachments := i.tcAttachmentDescriptions()
 	i.udpNat.Purge()
+	if err = i.udpReplySockets.reset(); err != nil {
+		i.interfaceWarnings.reconcile.warn(i.logger, "reset TC eBPF UDP reply sockets: ", err)
+	}
 	if err = i.reconcileTCDataPlane(localInterface, sharedInterfaces, hostAddresses); err != nil {
 		i.interfaceWarnings.reconcile.warn(i.logger, "refresh TC eBPF interfaces: ", err)
 		return
 	}
-	i.logger.Debug(
-		"eBPF TC attachments updated: attachments=[",
-		strings.Join(i.tcAttachmentDescriptions(), ", "),
-		"]",
-	)
+	attachments := i.tcAttachmentDescriptions()
+	if !slices.Equal(previousAttachments, attachments) {
+		i.logger.Debug(
+			"eBPF TC attachments updated: attachments=[",
+			strings.Join(attachments, ", "),
+			"]",
+		)
+	}
 }
 
 func (i *Inbound) repairTCInfrastructure() (bool, error) {
@@ -366,6 +373,11 @@ func (d *tcDataPlane) attachmentStateChanged(localInterface string, sharedInterf
 			if err != nil {
 				return false, err
 			}
+			// During a mobile-network handoff the default-interface monitor can
+			// briefly report no interface while the old link and its TC filters
+			// are still usable. Avoid treating a transient netlink observation as
+			// a filter loss and repeatedly tearing down the active attachment.
+			continue
 		}
 		attached, err := attachment.filtersAttached(d.priority)
 		if err != nil {

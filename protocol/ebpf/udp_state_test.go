@@ -82,6 +82,34 @@ func TestUDPReplySocketPoolSharesAcrossClients(t *testing.T) {
 	_ = pool.close()
 }
 
+func TestUDPReplySocketPoolResetsForNetworkChange(t *testing.T) {
+	var pool udpReplySocketPool
+	destination := netip.MustParseAddrPort("1.1.1.1:53")
+	created := 0
+	create := func(netip.AddrPort) (*net.UDPConn, error) {
+		created++
+		return net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	}
+	first, err := pool.get(destination, create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = pool.reset(); err != nil {
+		t.Fatal(err)
+	}
+	second, err := pool.get(destination, create)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second || created != 2 {
+		t.Fatalf("network reset did not replace the reply socket: first=%p second=%p created=%d", first, second, created)
+	}
+	if _, err = first.WriteToUDPAddrPort([]byte{1}, netip.MustParseAddrPort("127.0.0.1:9")); err == nil {
+		t.Fatal("reset reply socket remained open")
+	}
+	_ = pool.close()
+}
+
 func TestUDPDirectReplyBindingChecksGeneration(t *testing.T) {
 	var table udpClientTable
 	client := netip.MustParseAddrPort("192.0.2.10:53000")

@@ -44,8 +44,9 @@ func TestInternalListenerSetsSelectIndependentPorts(t *testing.T) {
 				Listen:     common.Ptr(badoption.Addr(netip.IPv4Unspecified())),
 				ListenPort: port,
 			},
-			DisablePacketOutput: true,
-			DisableLog:          true,
+			DisablePacketOutput:  true,
+			DisableConnectionLog: true,
+			DisableListenerLog:   true,
 		})
 	}
 	var first internalListenerSet

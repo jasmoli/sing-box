@@ -78,7 +78,7 @@ func (l *Listener) ListenTCP() (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !l.disableLog {
+	if !l.disableListenerLog {
 		l.logger.Info("tcp server started at ", tcpListener.Addr())
 	}
 	l.tcpListener = tcpListener
@@ -108,7 +108,7 @@ func (l *Listener) loopTCPIn() {
 		metadata.Source = M.SocksaddrFromNet(conn.RemoteAddr()).Unwrap()
 		metadata.OriginDestination = M.SocksaddrFromNet(conn.LocalAddr()).Unwrap()
 		ctx := log.ContextWithNewID(l.ctx)
-		if !l.disableLog {
+		if !l.disableConnectionLog {
 			l.logger.InfoContext(ctx, "inbound connection from ", metadata.Source)
 		}
 		go l.connHandler.NewConnection(ctx, conn, metadata, nil)

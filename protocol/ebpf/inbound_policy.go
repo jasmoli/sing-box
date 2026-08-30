@@ -12,6 +12,9 @@ import (
 )
 
 func (i *Inbound) startBypassRuleSets() error {
+	if i.dataPlane == dataPlaneCgroup {
+		return i.startCgroupBypassRuleSets()
+	}
 	i.bypassRuleSetAccess.Lock()
 	defer i.bypassRuleSetAccess.Unlock()
 	if i.bypassRuleSetStarted {
@@ -32,6 +35,10 @@ func (i *Inbound) startBypassRuleSets() error {
 }
 
 func (i *Inbound) stopBypassRuleSets() {
+	if i.dataPlane == dataPlaneCgroup {
+		i.stopCgroupBypassRuleSets()
+		return
+	}
 	i.bypassRuleSetAccess.Lock()
 	defer i.bypassRuleSetAccess.Unlock()
 	i.stopBypassRuleSetsLocked()
@@ -51,7 +58,11 @@ func (i *Inbound) stopBypassRuleSetsLocked() {
 	i.bypassRuleSetStarted = false
 }
 
-func (i *Inbound) updateBypassRuleSet(adapter.RuleSet) {
+func (i *Inbound) updateBypassRuleSet(ruleSet adapter.RuleSet) {
+	if i.dataPlane == dataPlaneCgroup {
+		i.updateCgroupBypassRuleSet(ruleSet)
+		return
+	}
 	i.bypassRuleSetAccess.Lock()
 	defer i.bypassRuleSetAccess.Unlock()
 	if !i.bypassRuleSetStarted {

@@ -42,11 +42,12 @@ func (i *Inbound) newInternalListener(
 			Listen:     common.Ptr(badoption.Addr(listenAddress)),
 			ListenPort: port,
 		},
-		ConnectionHandler:   handler,
-		OOBPacketHandler:    handler,
-		DisablePacketOutput: true,
-		DisableLog:          true,
-		SocketControl:       i.socketControl(ipv6Listener),
+		ConnectionHandler:    handler,
+		OOBPacketHandler:     handler,
+		DisablePacketOutput:  true,
+		DisableConnectionLog: true,
+		DisableListenerLog:   true,
+		SocketControl:        i.socketControl(ipv6Listener),
 	})
 }
 
@@ -207,4 +208,29 @@ func (s *internalListenerSet) String() string {
 		listeners = append(listeners, "udp6="+s.udp6.UDPConn().LocalAddr().String())
 	}
 	return strings.Join(listeners, ", ")
+}
+
+func (s *internalListenerSet) udp(ipv6 bool) *listener.Listener {
+	if ipv6 {
+		return s.udp6
+	}
+	return s.udp4
+}
+
+func (s *internalListenerSet) writeUDP(
+	payload []byte,
+	packetInfo []byte,
+	client netip.AddrPort,
+	redirectAddress netip.Addr,
+) error {
+	udpListener := s.udp(redirectAddress.Is6())
+	if udpListener == nil {
+		addressFamily := "IPv4"
+		if redirectAddress.Is6() {
+			addressFamily = "IPv6"
+		}
+		return E.New(addressFamily, " eBPF UDP redirect listener is unavailable")
+	}
+	_, _, err := udpListener.UDPConn().WriteMsgUDPAddrPort(payload, packetInfo, client)
+	return err
 }

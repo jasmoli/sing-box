@@ -5,6 +5,7 @@ package ebpf
 import (
 	"net"
 	"net/netip"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -31,6 +32,9 @@ func normalizeMode(mode string) (string, bool, bool, error) {
 func validateLocalOptions(enabled bool, options option.EBPFLocalOptions) error {
 	if enabled {
 		return nil
+	}
+	if options.CgroupPath != "" {
+		return E.New("local.cgroup_path requires local or hybrid mode")
 	}
 	if options.DNSMode != "" {
 		return E.New("local.dns_mode requires local or hybrid mode")
@@ -85,6 +89,16 @@ func enabledByDefault(value *bool) bool {
 	return value == nil || *value
 }
 
+func normalizeCgroupPath(cgroupPath string) (string, error) {
+	if cgroupPath == "" {
+		return "", nil
+	}
+	if !filepath.IsAbs(cgroupPath) {
+		return "", E.New("eBPF cgroup_path must be absolute")
+	}
+	return filepath.Clean(cgroupPath), nil
+}
+
 func parseUIDRanges(uidList []uint32, rangeList []string) ([]commonEBPF.UIDRange, error) {
 	uidRanges := make([]commonEBPF.UIDRange, 0, len(uidList)+len(rangeList))
 	for _, uid := range uidList {
@@ -124,7 +138,8 @@ func validateSharedOptions(enabled bool, options option.EBPFSharedOptions) error
 	if options.DNSMode != "" || len(options.Interface) > 0 || options.IPv6 != nil || options.BypassPrivateAddress != nil ||
 		len(options.IncludeSourceCIDR) > 0 || len(options.ExcludeSourceCIDR) > 0 ||
 		len(options.IncludeMACAddress) > 0 || len(options.ExcludeMACAddress) > 0 ||
-		len(options.BypassPort) > 0 || len(options.BypassPortRange) > 0 {
+		len(options.BypassPort) > 0 || len(options.BypassPortRange) > 0 ||
+		options.Advanced.TCPriority != 0 {
 		return E.New("shared options require shared or hybrid mode")
 	}
 	return nil
@@ -173,6 +188,9 @@ func parsePortRanges(name string, ports []uint16, ranges []string) ([]commonEBPF
 }
 
 func normalizeSharedOptions(options option.EBPFSharedOptions) (option.EBPFSharedOptions, error) {
+	if options.Advanced.TCPriority == 0 {
+		options.Advanced.TCPriority = option.EBPFTCPriority(defaultSharedNetworkTCPriority)
+	}
 	if len(options.Interface) == 0 {
 		return option.EBPFSharedOptions{}, E.New("shared.interface must not be empty")
 	}

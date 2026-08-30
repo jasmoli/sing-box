@@ -33,6 +33,34 @@ const (
 	defaultTCPriority    = 1
 )
 
+// dataPlane selects the kernel interception implementation. The TC data plane is
+// preferred; the cgroup data plane is the legacy fallback for kernels without
+// the TC socket-assign helpers (notably Linux below 5.10).
+type dataPlane uint8
+
+const (
+	dataPlaneTC dataPlane = iota
+	dataPlaneCgroup
+)
+
+func (d dataPlane) String() string {
+	if d == dataPlaneCgroup {
+		return "cgroup"
+	}
+	return "tc"
+}
+
+var (
+	redirectIPv4Candidates = []netip.Prefix{
+		netip.MustParsePrefix("127.128.0.0/9"),
+		netip.MustParsePrefix("127.64.0.0/10"),
+	}
+	redirectIPv6Candidates = []netip.Prefix{
+		netip.MustParsePrefix("fd53:696e:672d:626f::/64"),
+		netip.MustParsePrefix("fd53:696e:672d:6270::/64"),
+	}
+)
+
 type fakeIPRangeProvider interface {
 	FakeIPRanges() (netip.Prefix, netip.Prefix)
 }
@@ -90,6 +118,28 @@ type Inbound struct {
 	tcpWarnings       warningLimiter
 	policyWarnings    warningLimiter
 	interfaceWarnings interfaceWarningLimiters
+
+	// legacy cgroup data plane (Linux < 5.10 fallback)
+	cgroupUDPClientTable         cgroupUDPClientTable
+	dataPlane                    dataPlane
+	cgroupPath                   string
+	cgroupBackend                *commonEBPF.CgroupBackend
+	cgroupBackendAccess          sync.RWMutex
+	cgroupMapCapacity            commonEBPF.CgroupMapCapacity
+	sharedNetworkMapCapacity     commonEBPF.SharedNetworkMapCapacities
+	socketProtector              *socketProtector
+	socketProtectionRegistration *adapter.EBPFSocketProtectionRegistration
+	redirectIPv4Prefix           netip.Prefix
+	redirectIPv6Prefix           netip.Prefix
+	localRoutes                  []*localRoute
+	sharedNetwork                *sharedNetwork
+	bypassRuleSetPolicy          commonEBPF.BypassCIDRPolicy
+	bypassRuleSetDirty           bool
+	tcpJanitorWarn               warningLimiter
+	maintenanceAccess            sync.RWMutex
+	tcpJanitorStop               context.CancelFunc
+	tcpJanitorDone               chan struct{}
+	tcpJanitorWake               chan struct{}
 }
 
 var _ adapter.InterfaceUpdateListener = (*Inbound)(nil)
@@ -106,6 +156,10 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 		return nil, err
 	}
 	if err = validateAndroidUIDOptions(runtime.GOOS, options.Local); err != nil {
+		return nil, err
+	}
+	cgroupPath, err := normalizeCgroupPath(options.Local.CgroupPath)
+	if err != nil {
 		return nil, err
 	}
 	localDNSMode, err := normalizeDNSMode(options.Local.DNSMode)
@@ -160,8 +214,9 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	if networkManager == nil {
 		return nil, E.New("missing network manager")
 	}
+	plane := selectDataPlane(logger)
 	var selfBypass *commonEBPF.SelfBypass
-	if localEnabled {
+	if localEnabled && plane == dataPlaneTC {
 		provider, loaded := networkManager.(interface {
 			EBPFSelfBypass() *commonEBPF.SelfBypass
 		})
@@ -207,7 +262,13 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			IncludeUID: includeUIDRanges,
 			ExcludeUID: excludeUIDRanges,
 		},
-		androidUIDOptions: newAndroidUIDOptions(options.Local),
+		androidUIDOptions:        newAndroidUIDOptions(options.Local),
+		dataPlane:                plane,
+		cgroupPath:               cgroupPath,
+		cgroupMapCapacity:        commonEBPF.DefaultCgroupMapCapacity(),
+		sharedNetworkMapCapacity: commonEBPF.DefaultSharedNetworkMapCapacities(),
+		redirectIPv4Prefix:       redirectIPv4Candidates[0],
+		redirectIPv6Prefix:       redirectIPv6Candidates[0],
 	}
 	if inbound.tcPriority == 0 {
 		inbound.tcPriority = defaultTCPriority
@@ -235,7 +296,29 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	}
 	inbound.udpTimeout = udpTimeout
 	inbound.udpNat = udpnat.New(inbound, inbound.preparePacketConnection, udpTimeout, false)
+	if plane == dataPlaneCgroup && localEnabled {
+		inbound.socketProtector = newSocketProtector()
+	}
 	return inbound, nil
+}
+
+// selectDataPlane probes the running kernel and falls back to the legacy cgroup
+// data plane when the TC data plane is unsupported (for example Linux below 5.10
+// which lacks bpf_sk_assign for SchedCLS).
+func selectDataPlane(logger log.ContextLogger) dataPlane {
+	report, err := commonEBPF.ProbeKernel(commonEBPF.KernelProbeOptions{
+		Mode:      commonEBPF.KernelProbeModeAll,
+		DataPlane: commonEBPF.KernelProbeDataPlaneTC,
+	})
+	if err != nil {
+		return dataPlaneTC
+	}
+	probeErr := report.RequiredError()
+	if probeErr == nil {
+		return dataPlaneTC
+	}
+	logger.Warn("TC eBPF data plane is unsupported (", probeErr, "); falling back to the legacy cgroup data plane")
+	return dataPlaneCgroup
 }
 
 func toCommonDNSMode(mode string) commonEBPF.DNSMode {

@@ -3,17 +3,25 @@
 package ebpf
 
 import (
+	"errors"
+	"fmt"
 	"slices"
 
 	BPFGen "github.com/sagernet/sing-box/common/ebpf/internal/bpfgen"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	CiliumEBPF "github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/link"
+	"golang.org/x/sys/unix"
 )
 
 const bpfFlagNoPrealloc = 1
 
-var loadTC = BPFGen.LoadTC
+var (
+	loadTC            = BPFGen.LoadTC
+	loadCgroup        = BPFGen.LoadCgroup
+	loadSharedNetwork = BPFGen.LoadSharedNetwork
+)
 
 type programSelection struct {
 	section string
@@ -172,4 +180,46 @@ func closeMaps(maps map[string]*CiliumEBPF.Map) error {
 		delete(maps, name)
 	}
 	return closeErr
+}
+
+func attachProgramRaw(target int, program *CiliumEBPF.Program, attachType CiliumEBPF.AttachType) error {
+	const allowMulti = 2
+	err := rawAttachProgram(target, program, attachType, allowMulti)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.EPERM) &&
+		!errors.Is(err, unix.ENOTSUP) && !errors.Is(err, unix.EOPNOTSUPP) {
+		return err
+	}
+	return rawAttachProgram(target, program, attachType, 0)
+}
+
+func rawAttachProgram(target int, program *CiliumEBPF.Program, attachType CiliumEBPF.AttachType, flags uint32) error {
+	return link.RawAttachProgram(link.RawAttachProgramOptions{
+		Target:  target,
+		Program: program,
+		Attach:  attachType,
+		Flags:   flags,
+	})
+}
+
+func rawDetachProgram(target int, program *CiliumEBPF.Program, attachType CiliumEBPF.AttachType) error {
+	return link.RawDetachProgram(link.RawDetachProgramOptions{
+		Target:  target,
+		Program: program,
+		Attach:  attachType,
+	})
+}
+
+func sameProgramIDs(left, right []CiliumEBPF.ProgramID) bool {
+	return slices.Equal(left, right)
+}
+
+func verifierErrorStage(err error) string {
+	var verifierErr *CiliumEBPF.VerifierError
+	if errors.As(err, &verifierErr) {
+		return fmt.Sprintf("verifier rejected program: %v", verifierErr)
+	}
+	return ""
 }

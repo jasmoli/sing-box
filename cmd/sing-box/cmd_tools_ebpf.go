@@ -17,6 +17,8 @@ var (
 	commandEBPFStatusNetwork   []string
 	commandEBPFStatusInterface string
 	commandEBPFStatusIPv6      bool
+	commandEBPFStatusCgroup    string
+	commandEBPFStatusDataPlane string
 	commandEBPFStatusJSON      bool
 )
 
@@ -41,6 +43,8 @@ func init() {
 	commandEBPFStatus.Flags().StringSliceVar(&commandEBPFStatusNetwork, "network", []string{"tcp", "udp"}, "Protocols to inspect: tcp, udp, or tcp,udp")
 	commandEBPFStatus.Flags().StringVar(&commandEBPFStatusInterface, "interface", "", "Configured shared interface")
 	commandEBPFStatus.Flags().BoolVar(&commandEBPFStatusIPv6, "ipv6", true, "Inspect IPv6 support for the selected data path")
+	commandEBPFStatus.Flags().StringVar(&commandEBPFStatusCgroup, "cgroup", "", "Configured cgroup v2 path (legacy cgroup data plane)")
+	commandEBPFStatus.Flags().StringVar(&commandEBPFStatusDataPlane, "data-plane", "tc", "Data plane to inspect: tc or cgroup")
 	commandEBPFStatus.Flags().BoolVar(&commandEBPFStatusJSON, "json", false, "Write the report as JSON")
 	commandEBPF.AddCommand(commandEBPFStatus)
 	commandTools.AddCommand(commandEBPF)
@@ -50,6 +54,8 @@ func runEBPFStatus() error {
 	mode := commonEBPF.KernelProbeMode(commandEBPFStatusMode)
 	report, err := commonEBPF.ProbeKernel(commonEBPF.KernelProbeOptions{
 		Mode:          mode,
+		DataPlane:     commonEBPF.KernelProbeDataPlane(commandEBPFStatusDataPlane),
+		CgroupPath:    commandEBPFStatusCgroup,
 		Network:       commandEBPFStatusNetwork,
 		InterfaceName: commandEBPFStatusInterface,
 		EnableIPv6:    commandEBPFStatusIPv6,

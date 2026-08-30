@@ -13,6 +13,9 @@ import (
 )
 
 func (i *Inbound) Start(stage adapter.StartStage) error {
+	if i.dataPlane == dataPlaneCgroup {
+		return i.startCgroupInbound(stage)
+	}
 	switch stage {
 	case adapter.StartStateInitialize:
 		if i.localEnabled {
@@ -246,6 +249,9 @@ func (i *Inbound) cleanupStartFailure() error {
 }
 
 func (i *Inbound) closeResources() error {
+	if i.dataPlane == dataPlaneCgroup {
+		return i.closeCgroupResources()
+	}
 	monitorErr := i.stopTCInterfaceMonitor()
 	i.stopBypassRuleSets()
 	dataPlane := i.takeTCDataPlane()

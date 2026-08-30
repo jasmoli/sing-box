@@ -24,12 +24,23 @@ func (i *Inbound) closeListeners() error {
 	return i.listeners.close()
 }
 
+func (i *Inbound) startTCPListenersForDataPlane() error {
+	if i.dataPlane == dataPlaneCgroup {
+		return i.startListeners()
+	}
+	return i.startTCListeners()
+}
+
 func (i *Inbound) NewConnection(
 	ctx context.Context,
 	conn net.Conn,
 	metadata adapter.InboundContext,
 	onClose N.CloseHandlerFunc,
 ) {
+	if i.dataPlane == dataPlaneCgroup {
+		i.newCgroupConnection(ctx, conn, metadata, onClose)
+		return
+	}
 	backend := i.tcBackend()
 	if backend == nil {
 		_ = conn.Close()
@@ -39,6 +50,10 @@ func (i *Inbound) NewConnection(
 }
 
 func (i *Inbound) NewPacket(buffer *buf.Buffer, oob []byte, source M.Socksaddr) {
+	if i.dataPlane == dataPlaneCgroup {
+		i.newCgroupPacket(buffer, oob, source)
+		return
+	}
 	backend := i.tcBackend()
 	if backend == nil {
 		return
@@ -53,6 +68,10 @@ func (i *Inbound) NewPacketConnectionEx(
 	destination M.Socksaddr,
 	onClose N.CloseHandlerFunc,
 ) {
+	if i.dataPlane == dataPlaneCgroup {
+		i.newCgroupPacketConnectionEx(ctx, conn, source, destination, onClose)
+		return
+	}
 	metadata := adapter.InboundContext{
 		Inbound:     i.Tag(),
 		InboundType: i.Type(),
@@ -71,10 +90,16 @@ func (i *Inbound) preparePacketConnection(
 	destination M.Socksaddr,
 	_ any,
 ) (bool, context.Context, N.PacketWriter, N.CloseHandlerFunc) {
+	if i.dataPlane == dataPlaneCgroup {
+		return i.prepareCgroupPacketConnection(source, destination, nil)
+	}
 	return i.prepareTCPacketConnection(source, destination)
 }
 
 func (i *Inbound) socketControl(ipv6Listener bool) control.Func {
+	if i.dataPlane == dataPlaneCgroup {
+		return i.cgroupSocketControl(ipv6Listener)
+	}
 	return func(network string, _ string, rawConn syscall.RawConn) error {
 		if ipv6Listener {
 			return control.Raw(rawConn, func(fd uintptr) error {

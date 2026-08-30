@@ -31,6 +31,10 @@ type tcInterfaceMonitor struct {
 }
 
 func (i *Inbound) InterfaceUpdated(ctx context.Context) {
+	if i.dataPlane == dataPlaneCgroup {
+		i.cgroupInterfaceUpdated(ctx)
+		return
+	}
 	if ctx.Err() != nil {
 		return
 	}

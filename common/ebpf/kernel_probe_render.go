@@ -99,7 +99,7 @@ func WriteKernelProbeReport(writer io.Writer, report *KernelProbeReport) error {
 	if _, err := fmt.Fprintln(writer, "Runtime feature probe: cilium/ebpf direct bpf(2) probes (no shell, bpftool, or tc dependency)"); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintln(writer, "The probe does not attach programs or change qdiscs, routes, sysctls, or traffic."); err != nil {
+	if _, err := fmt.Fprintln(writer, "The probe does not attach programs or change qdiscs, routes, sysctls, cgroups, or traffic."); err != nil {
 		return err
 	}
 
@@ -163,6 +163,8 @@ func kernelProbeScopeTitle(scope string) string {
 		return "Local TC data path"
 	case "shared":
 		return "Shared TC gateway data path"
+	case "shared-network":
+		return "Shared-network TC gateway data path"
 	default:
 		return scope
 	}

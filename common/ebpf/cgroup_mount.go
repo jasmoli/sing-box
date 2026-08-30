@@ -59,6 +59,16 @@ func detectCgroup2MountFromFile(path string) (cgroup2Mount, error) {
 	return detectCgroup2MountEntry(file)
 }
 
+// DetectCgroup2Mount returns the cgroup v2 mount point visible to the current
+// process. Used by the cgroup backend when no explicit path is configured.
+func DetectCgroup2Mount() (string, error) {
+	mount, err := detectCgroup2MountFromFile("/proc/self/mountinfo")
+	if err != nil {
+		return "", err
+	}
+	return mount.path, nil
+}
+
 func detectCgroup2Mount(reader io.Reader) (string, error) {
 	mount, err := detectCgroup2MountEntry(reader)
 	return mount.path, err

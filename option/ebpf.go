@@ -19,6 +19,7 @@ type EBPFInboundOptions struct {
 
 type EBPFLocalOptions struct {
 	DNSMode              string                     `json:"dns_mode,omitempty" enum:"hijack,respect_policy,off"`
+	CgroupPath           string                     `json:"cgroup_path,omitempty"`
 	IPv6                 *bool                      `json:"ipv6,omitempty"`
 	BypassPrivateAddress *bool                      `json:"bypass_private_address,omitempty"`
 	IncludeUID           badoption.Listable[uint32] `json:"include_uid,omitempty"`
@@ -43,6 +44,11 @@ type EBPFSharedOptions struct {
 	ExcludeMACAddress    badoption.Listable[string]       `json:"exclude_mac_address,omitempty"`
 	BypassPort           badoption.Listable[uint16]       `json:"bypass_port,omitempty"`
 	BypassPortRange      badoption.Listable[string]       `json:"bypass_port_range,omitempty"`
+	Advanced             EBPFSharedAdvancedOptions        `json:"advanced,omitempty"`
+}
+
+type EBPFSharedAdvancedOptions struct {
+	TCPriority EBPFTCPriority `json:"tc_priority,omitempty"`
 }
 
 type EBPFTCPriority uint16

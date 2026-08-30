@@ -4,6 +4,7 @@ package ebpf
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	commonEBPF "github.com/sagernet/sing-box/common/ebpf"
@@ -80,6 +81,19 @@ func (i *Inbound) inspectAndroidPackages(packageManager tun.PackageManager, mode
 			"; eBPF UID policy applies to all of them",
 		)
 	}
+}
+
+func formatUIDRanges(uidRanges []commonEBPF.UIDRange) string {
+	formatted := make([]string, 0, len(uidRanges))
+	for _, uidRange := range uidRanges {
+		start := strconv.FormatUint(uint64(uidRange.Start), 10)
+		if uidRange.Start == uidRange.End {
+			formatted = append(formatted, start)
+		} else {
+			formatted = append(formatted, start+":"+strconv.FormatUint(uint64(uidRange.End), 10))
+		}
+	}
+	return strings.Join(formatted, ", ")
 }
 
 func toTunUIDRanges(uidRanges []commonEBPF.UIDRange) []ranges.Range[uint32] {

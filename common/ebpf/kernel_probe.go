@@ -180,8 +180,10 @@ func probeCommonCapabilities(report *KernelProbeReport, memlockErr error, enable
 		"Stores bounded original-flow assignment and local socket-cookie metadata.")
 	probeMapType(report, "common", KernelProbeRequired, CiliumEBPF.LPMTrie,
 		"Stores UID, source CIDR, and destination bypass policies.")
-	probeMapType(report, "common", KernelProbeRequired, CiliumEBPF.SockMap,
-		"Stores transparent TCP listener sockets for assignment.")
+	if enableTCP {
+		probeMapType(report, "common", KernelProbePerformance, CiliumEBPF.SockMap,
+			"Enables the preferred TCP listener fallback; TC loading falls back to direct socket lookup when unavailable.")
+	}
 	probeProgramType(report, "common", KernelProbeRequired, CiliumEBPF.SchedCLS,
 		"Runs the unified local-egress, shared-ingress, and delivery-ingress TC classifiers.")
 	helpers := []struct {

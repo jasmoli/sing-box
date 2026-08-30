@@ -130,6 +130,7 @@ func (i *Inbound) startTCInbound() error {
 		", shared_interfaces=[", strings.Join(i.sharedOptions.Interface, ", "), "]",
 		", attachments=[", strings.Join(dataPlane.attachmentDescriptions(), ", "), "]",
 		", listeners=[", i.listeners.String(), "]",
+		", tcp_listener_lookup=", backend.TCPListenerLookupMode(),
 		", delivery_interface=", dataPlane.deliveryName(),
 		", routing_mark=0x", strconv.FormatUint(uint64(dataPlane.routing.mark), 16),
 		", routing_table=", dataPlane.routing.table,

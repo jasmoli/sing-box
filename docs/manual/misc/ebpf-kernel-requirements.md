@@ -32,13 +32,20 @@ The following options, or their vendor equivalents, are required:
 The selected kernel must support:
 
 - `SCHED_CLS` programs on TC ingress and egress;
-- `ARRAY`, `HASH`, `LRU_HASH`, `LPM_TRIE`, and `SOCKMAP` maps;
+- `ARRAY`, `HASH`, `LRU_HASH`, and `LPM_TRIE` maps;
 - `bpf_map_lookup_elem`, `bpf_map_update_elem`, and `bpf_map_delete_elem`;
 - `bpf_get_socket_uid` in `SCHED_CLS`;
 - `bpf_redirect` in `SCHED_CLS`;
 - `bpf_skb_store_bytes` and `bpf_skb_change_head` in `SCHED_CLS`;
 - `bpf_skc_lookup_tcp`, `bpf_sk_lookup_udp`, `bpf_sk_assign`, and
   `bpf_sk_release` in `SCHED_CLS`.
+
+TCP listener SOCKMAP support is optional. When `BPF_MAP_TYPE_SOCKMAP` can be
+created and the modern TC sections load successfully, it is used for wildcard
+listener fallback. Otherwise sing-box loads a legacy TC section that does not
+reference the map and performs direct `bpf_skc_lookup_tcp` lookup. The selected
+path is decided by map creation and program loading, not by the kernel release
+string. Older kernels commonly gate SOCKMAP behind `CONFIG_BPF_STREAM_PARSER`.
 
 For local mode, `bpf_get_socket_cookie` in `SCHED_CLS` is required for the
 self-bypass cookie map. `CGROUP_SOCK` with `inet_sock_create` and

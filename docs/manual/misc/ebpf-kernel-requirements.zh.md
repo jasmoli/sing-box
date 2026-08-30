@@ -30,13 +30,19 @@ eBPF 入站使用 TC 分类器、透明 socket、socket lookup 和 `bpf_sk_assig
 目标内核必须支持：
 
 - TC ingress 和 egress 上的 `SCHED_CLS` 程序；
-- `ARRAY`、`HASH`、`LRU_HASH`、`LPM_TRIE` 和 `SOCKMAP`；
+- `ARRAY`、`HASH`、`LRU_HASH` 和 `LPM_TRIE`；
 - `bpf_map_lookup_elem`、`bpf_map_update_elem` 和 `bpf_map_delete_elem`；
 - `SCHED_CLS` 中的 `bpf_get_socket_uid`；
 - `SCHED_CLS` 中的 `bpf_redirect`；
 - `SCHED_CLS` 中的 `bpf_skb_store_bytes` 和 `bpf_skb_change_head`；
 - `SCHED_CLS` 中的 `bpf_skc_lookup_tcp`、`bpf_sk_lookup_udp`、
   `bpf_sk_assign` 和 `bpf_sk_release`。
+
+TCP listener 的 SOCKMAP 是可选能力。内核能够创建 `BPF_MAP_TYPE_SOCKMAP`
+且现代 TC section 能通过 verifier 时，优先使用它处理 wildcard listener；
+否则加载不引用 SOCKMAP 的 legacy TC section，直接调用
+`bpf_skc_lookup_tcp`。路径选择依据实际 map 创建和程序加载结果，不依据内核
+版本字符串。旧内核通常需要 `CONFIG_BPF_STREAM_PARSER` 才能提供 SOCKMAP。
 
 local 模式还要求 `SCHED_CLS` 中的 `bpf_get_socket_cookie`，用于自身绕过的
 socket-cookie map。`CGROUP_SOCK` 的 `inet_sock_create` 和 `inet_sock_release` hook

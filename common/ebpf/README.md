@@ -30,8 +30,11 @@ selection. IPv6 atomic fragments continue through extension-header parsing.
 
 ## Socket assignment
 
-TCP listeners are stored in a `SOCKMAP`. Established TCP lookup uses the original
-tuple before falling back to the listener. UDP lookup substitutes only the
+TCP listeners use a `SOCKMAP` on kernels that support the preferred listener
+fallback. Established TCP lookup uses the original tuple before falling back to the
+listener. If the SOCKMAP cannot be created or the modern program is rejected by the
+kernel verifier, sing-box loads a legacy TCP section that does not reference the map
+and performs direct `bpf_skc_lookup_tcp` lookup. UDP lookup substitutes only the
 internal listener port. `tc_assignment` records the original tuple, ingress
 interface, shared source MAC, packet path, and (for local process matching) the
 socket cookie used to recover the process owner. The separate
@@ -82,7 +85,7 @@ MAC include/exclude policies are evaluated only on the shared path.
 | Group | Map types | Purpose |
 | --- | --- | --- |
 | control | `ARRAY` | Enable state, path flags, listener port, and delivery interface identity. |
-| sockets and assignments | `SOCKMAP`, `LRU_HASH` | TCP listeners, original-flow metadata, and local self-bypass cookies. |
+| sockets and assignments | `SOCKMAP` (optional), `LRU_HASH` | Preferred TCP listener fallback, original-flow metadata, and local self-bypass cookies. Legacy TCP lookup does not use SOCKMAP. |
 | prefix policy | `LPM_TRIE` | UID ranges, source CIDRs, and destination bypass CIDRs. |
 | exact policy | `HASH` | Host addresses and shared source MAC policy. |
 

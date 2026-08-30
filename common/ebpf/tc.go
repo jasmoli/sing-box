@@ -117,6 +117,7 @@ type tcRuntime struct {
 type TCBackend struct {
 	access          sync.RWMutex
 	runtime         *tcRuntime
+	tcpListenerMap  bool
 	control         tcControl
 	controlMapFD    int
 	assignmentMapFD int
@@ -128,6 +129,10 @@ type TCBackend struct {
 }
 
 func PrepareTC(config TCConfig) (*TCBackend, error) {
+	return prepareTC(config, false)
+}
+
+func prepareTC(config TCConfig, forceLegacyTCP bool) (*TCBackend, error) {
 	if config.ListenerPort == 0 {
 		return nil, E.New("invalid TC eBPF listener port")
 	}
@@ -198,52 +203,14 @@ func PrepareTC(config TCConfig) (*TCBackend, error) {
 			name: "sb_self_sockets", mapType: CiliumEBPF.LRUHash, maxEntries: selfBypassSocketCapacity,
 		}
 	}
-	maps, err := loadObjectMaps(loadTC, mapOverrides)
+	legacyTCP := forceLegacyTCP || !config.EnableTCP
+	maps, loadedPrograms, err := loadTCResources(config, mapOverrides, legacyTCP)
+	if err != nil && config.EnableTCP && !forceLegacyTCP {
+		legacyTCP = true
+		maps, loadedPrograms, err = loadTCResources(config, mapOverrides, true)
+	}
 	if err != nil {
 		return nil, err
-	}
-	if config.EnableLocal && config.SelfBypassMap != nil {
-		createdMap := maps["tc_self_sockets"]
-		maps["tc_self_sockets"] = config.SelfBypassMap
-		_ = createdMap.Close()
-	}
-	selections := make([]programSelection, 0, tcProgramCount)
-	programIndexes := make([]int, 0, tcProgramCount)
-	if config.EnableLocal {
-		localEthernetSection := "classifier/local_egress_ethernet_mark"
-		localRawIPSection := "classifier/local_egress_raw_ip_mark"
-		if config.TrackProcess {
-			localEthernetSection = "classifier/local_egress_ethernet_process"
-			localRawIPSection = "classifier/local_egress_raw_ip_process"
-		}
-		selections = append(selections,
-			programSelection{section: localEthernetSection, name: "sb_tc_local_l2"},
-			programSelection{section: localRawIPSection, name: "sb_tc_local_l3"},
-		)
-		programIndexes = append(programIndexes, tcProgramLocalEgressEthernet, tcProgramLocalEgressRawIP)
-	}
-	if config.EnableShared {
-		selections = append(selections,
-			programSelection{section: "classifier/shared_ingress_ethernet", name: "sb_tc_share_l2"},
-			programSelection{section: "classifier/shared_ingress_raw_ip", name: "sb_tc_share_l3"},
-		)
-		programIndexes = append(programIndexes, tcProgramSharedIngressEthernet, tcProgramSharedIngressRawIP)
-	}
-	if config.EnableLocal {
-		selections = append(selections, programSelection{section: "classifier/delivery_ingress", name: "sb_tc_deliver"})
-		programIndexes = append(programIndexes, tcProgramDeliveryIngress)
-	}
-	loadedPrograms, err := loadObjectPrograms(loadTC, maps, selections)
-	if err != nil {
-		if config.EnableLocal && config.SelfBypassMap != nil {
-			delete(maps, "tc_self_sockets")
-		}
-		_ = closeMaps(maps)
-		return nil, err
-	}
-	programs := make([]*CiliumEBPF.Program, tcProgramCount)
-	for index, program := range loadedPrograms {
-		programs[programIndexes[index]] = program
 	}
 	controlValue := tcControl{
 		Flags:             tcFlags(config, len(uidEntries) > 0 || uidDefaultBypass, uidDefaultBypass),
@@ -276,7 +243,8 @@ func PrepareTC(config TCConfig) (*TCBackend, error) {
 		controlValue.FakeIPIPv6Mask = prefixMask16(fakeIPIPv6.Bits())
 	}
 	backend := &TCBackend{
-		runtime:         &tcRuntime{maps: maps, programs: programs},
+		runtime:         &tcRuntime{maps: maps, programs: loadedPrograms},
+		tcpListenerMap:  config.EnableTCP && !legacyTCP,
 		control:         controlValue,
 		controlMapFD:    maps["tc_control"].FD(),
 		assignmentMapFD: maps["tc_assignment"].FD(),
@@ -319,6 +287,80 @@ func PrepareTC(config TCConfig) (*TCBackend, error) {
 		return nil, E.Cause(err, "populate TC eBPF exclude source MAC policy")
 	}
 	return backend, nil
+}
+
+func loadTCResources(config TCConfig, baseOverrides map[string]mapSpecOverride, legacyTCP bool) (map[string]*CiliumEBPF.Map, []*CiliumEBPF.Program, error) {
+	mapOverrides := make(map[string]mapSpecOverride, len(baseOverrides))
+	for name, override := range baseOverrides {
+		mapOverrides[name] = override
+	}
+	if legacyTCP {
+		delete(mapOverrides, "tc_listener_sockets")
+	}
+	maps, err := loadObjectMaps(loadTC, mapOverrides)
+	if err != nil {
+		return nil, nil, err
+	}
+	externalSelfMap := config.EnableLocal && config.SelfBypassMap != nil
+	if externalSelfMap {
+		createdMap := maps["tc_self_sockets"]
+		maps["tc_self_sockets"] = config.SelfBypassMap
+		_ = createdMap.Close()
+	}
+	selections := make([]programSelection, 0, tcProgramCount)
+	programIndexes := make([]int, 0, tcProgramCount)
+	if config.EnableLocal {
+		localEthernetSection := "classifier/local_egress_ethernet_mark"
+		localRawIPSection := "classifier/local_egress_raw_ip_mark"
+		if config.TrackProcess {
+			localEthernetSection = "classifier/local_egress_ethernet_process"
+			localRawIPSection = "classifier/local_egress_raw_ip_process"
+		}
+		selections = append(selections,
+			programSelection{section: localEthernetSection, name: "sb_tc_local_l2"},
+			programSelection{section: localRawIPSection, name: "sb_tc_local_l3"},
+		)
+		programIndexes = append(programIndexes, tcProgramLocalEgressEthernet, tcProgramLocalEgressRawIP)
+	}
+	if config.EnableShared {
+		sharedEthernetSection := "classifier/shared_ingress_ethernet"
+		sharedRawIPSection := "classifier/shared_ingress_raw_ip"
+		if !config.EnableTCP {
+			sharedEthernetSection += "_udp"
+			sharedRawIPSection += "_udp"
+		} else if legacyTCP {
+			sharedEthernetSection += "_legacy"
+			sharedRawIPSection += "_legacy"
+		}
+		selections = append(selections,
+			programSelection{section: sharedEthernetSection, name: "sb_tc_share_l2"},
+			programSelection{section: sharedRawIPSection, name: "sb_tc_share_l3"},
+		)
+		programIndexes = append(programIndexes, tcProgramSharedIngressEthernet, tcProgramSharedIngressRawIP)
+	}
+	if config.EnableLocal {
+		deliverySection := "classifier/delivery_ingress"
+		if !config.EnableTCP {
+			deliverySection += "_udp"
+		} else if legacyTCP {
+			deliverySection += "_legacy"
+		}
+		selections = append(selections, programSelection{section: deliverySection, name: "sb_tc_deliver"})
+		programIndexes = append(programIndexes, tcProgramDeliveryIngress)
+	}
+	loadedPrograms, err := loadObjectPrograms(loadTC, maps, selections)
+	if err != nil {
+		if externalSelfMap {
+			delete(maps, "tc_self_sockets")
+		}
+		_ = closeMaps(maps)
+		return nil, nil, err
+	}
+	programs := make([]*CiliumEBPF.Program, tcProgramCount)
+	for index, program := range loadedPrograms {
+		programs[programIndexes[index]] = program
+	}
+	return maps, programs, nil
 }
 
 func (b *TCBackend) SetRoutingMark(mark uint32) error {
@@ -428,6 +470,9 @@ func (b *TCBackend) SetDeliveryInterface(interfaceIndex uint32, hardwareAddress 
 }
 
 func (b *TCBackend) RegisterTCPListener(ipv6 bool, fd int) error {
+	if !b.tcpListenerMap {
+		return nil
+	}
 	if fd < 0 {
 		return E.New("invalid TC eBPF listener socket")
 	}
@@ -445,6 +490,15 @@ func (b *TCBackend) RegisterTCPListener(ipv6 bool, fd int) error {
 		return E.Cause(err, "register TC eBPF TCP listener")
 	}
 	return nil
+}
+
+func (b *TCBackend) TCPListenerLookupMode() string {
+	b.access.RLock()
+	defer b.access.RUnlock()
+	if b.tcpListenerMap {
+		return "sockmap"
+	}
+	return "direct"
 }
 
 func (b *TCBackend) LookupAssignment(protocol uint8, source, destination netip.AddrPort, interfaceIndex uint32, remove bool) (TCAssignment, error) {

@@ -35,7 +35,9 @@ eBPF 入站不使用[监听字段](/zh/configuration/shared/listen/)。
     "exclude_uid_range": [],
     "include_android_user": [],
     "include_package": [],
-    "exclude_package": []
+    "exclude_package": [],
+    "bypass_port": [],
+    "bypass_port_range": []
   },
   "shared": {
     "dns_mode": "respect_policy",
@@ -45,7 +47,9 @@ eBPF 入站不使用[监听字段](/zh/configuration/shared/listen/)。
     "include_source_cidr": [],
     "exclude_source_cidr": [],
     "include_mac_address": [],
-    "exclude_mac_address": []
+    "exclude_mac_address": [],
+    "bypass_port": [],
+    "bypass_port_range": []
   }
 }
 ```
@@ -134,6 +138,15 @@ DoT 流量。
 
 需要绕过的 Android 包名，仅 Android。无法区分共用同一 UID 的包。
 
+#### local.bypass_port
+
+绕过本机接管的目标端口。启用的 `network` 协议（TCP 和/或 UDP）均适用；FakeIP
+和 DNS 接管优先于此设置。
+
+#### local.bypass_port_range
+
+需要绕过的目标端口范围，格式为 `start:end`，范围包含两端端口。
+
 ### shared
 
 #### shared.dns_mode
@@ -177,6 +190,15 @@ DoT 流量。
 需要绕过的 48 位客户端来源 MAC 地址。exclude 策略优先于 include 策略。
 
 仅适用于使用以太网帧的 shared 接口。
+
+#### shared.bypass_port
+
+绕过 shared 接管的目标端口。启用的 `network` 协议（TCP 和/或 UDP）均适用；FakeIP
+和 DNS 接管优先于此设置。
+
+#### shared.bypass_port_range
+
+需要绕过的目标端口范围，格式为 `start:end`，范围包含两端端口。
 
 !!! note
 

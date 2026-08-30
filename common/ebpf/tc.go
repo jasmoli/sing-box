@@ -24,6 +24,7 @@ const (
 
 const (
 	tcAssignmentCapacity = 65536
+	tcPortPolicyCapacity = 4096
 )
 
 // DefaultTCRoutingMark is used only by standalone backend tests and callers
@@ -40,6 +41,10 @@ const (
 
 const tcFlagSharedIPv6 = 1 << 18
 const tcFlagSocketPolicy = 1 << 19
+const (
+	tcFlagLocalBypassPort  = 1 << 20
+	tcFlagSharedBypassPort = 1 << 21
+)
 
 const (
 	tcListenerTCP4 = iota
@@ -73,7 +78,20 @@ type TCConfig struct {
 	RoutingMark         uint32
 	SelfBypassMap       *CiliumEBPF.Map
 	SocketPolicyMap     *CiliumEBPF.Map
+	LocalBypassPort     []PortRange
+	SharedBypassPort    []PortRange
 	TrackProcess        bool
+}
+
+type PortRange struct {
+	Start uint16
+	End   uint16
+}
+
+type tcPortKey struct {
+	Protocol uint8
+	Reserved uint8
+	Port     uint16
 }
 
 type tcControl struct {
@@ -200,6 +218,8 @@ func prepareTC(config TCConfig, forceLegacyTCP bool) (*TCBackend, error) {
 		"tc_exclude_source_mac":  {name: "sb_tc_exsmac", mapType: CiliumEBPF.Hash, maxEntries: sourceMACMapCapacity(len(config.ExcludeSourceMAC))},
 		"tc_host_ipv4":           {name: "sb_tc_host4", mapType: CiliumEBPF.Hash, maxEntries: maxHostAddressPolicyEntries},
 		"tc_host_ipv6":           {name: "sb_tc_host6", mapType: CiliumEBPF.Hash, maxEntries: maxHostAddressPolicyEntries},
+		"tc_local_bypass_port":   {name: "sb_tc_lport", mapType: CiliumEBPF.Hash, maxEntries: tcPortPolicyCapacity},
+		"tc_shared_bypass_port":  {name: "sb_tc_sport", mapType: CiliumEBPF.Hash, maxEntries: tcPortPolicyCapacity},
 	}
 	if config.EnableLocal {
 		mapOverrides["tc_self_sockets"] = mapSpecOverride{
@@ -266,6 +286,14 @@ func prepareTC(config TCConfig, forceLegacyTCP bool) (*TCBackend, error) {
 	if err = populateUIDPolicyMap(maps["tc_uid_policy"], uidEntries); err != nil {
 		_ = backend.Close()
 		return nil, E.Cause(err, "populate TC eBPF UID policy")
+	}
+	if err = populatePortPolicyMap(maps["tc_local_bypass_port"], config.LocalBypassPort, config.EnableTCP, config.EnableUDP); err != nil {
+		_ = backend.Close()
+		return nil, E.Cause(err, "populate TC eBPF local port bypass policy")
+	}
+	if err = populatePortPolicyMap(maps["tc_shared_bypass_port"], config.SharedBypassPort, config.EnableTCP, config.EnableUDP); err != nil {
+		_ = backend.Close()
+		return nil, E.Cause(err, "populate TC eBPF shared port bypass policy")
 	}
 	for _, sourcePolicy := range []struct {
 		ipv4Map string
@@ -430,6 +458,12 @@ func tcFlags(config TCConfig, uidPolicy bool, uidDefaultBypass bool) uint32 {
 	}
 	if config.SocketPolicyMap != nil {
 		flags |= tcFlagSocketPolicy
+	}
+	if len(config.LocalBypassPort) > 0 {
+		flags |= tcFlagLocalBypassPort
+	}
+	if len(config.SharedBypassPort) > 0 {
+		flags |= tcFlagSharedBypassPort
 	}
 	return flags
 }

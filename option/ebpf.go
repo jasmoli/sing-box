@@ -28,6 +28,8 @@ type EBPFLocalOptions struct {
 	IncludeAndroidUser   badoption.Listable[int]    `json:"include_android_user,omitempty"`
 	IncludePackage       badoption.Listable[string] `json:"include_package,omitempty"`
 	ExcludePackage       badoption.Listable[string] `json:"exclude_package,omitempty"`
+	BypassPort           badoption.Listable[uint16] `json:"bypass_port,omitempty"`
+	BypassPortRange      badoption.Listable[string] `json:"bypass_port_range,omitempty"`
 }
 
 type EBPFSharedOptions struct {
@@ -39,6 +41,8 @@ type EBPFSharedOptions struct {
 	ExcludeSourceCIDR    badoption.Listable[netip.Prefix] `json:"exclude_source_cidr,omitempty"`
 	IncludeMACAddress    badoption.Listable[string]       `json:"include_mac_address,omitempty"`
 	ExcludeMACAddress    badoption.Listable[string]       `json:"exclude_mac_address,omitempty"`
+	BypassPort           badoption.Listable[uint16]       `json:"bypass_port,omitempty"`
+	BypassPortRange      badoption.Listable[string]       `json:"bypass_port_range,omitempty"`
 }
 
 type EBPFTCPriority uint16

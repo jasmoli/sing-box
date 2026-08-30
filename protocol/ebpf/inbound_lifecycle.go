@@ -79,7 +79,9 @@ func (i *Inbound) startTCInbound() error {
 			}
 			return i.processTracker.SocketPolicyMap()
 		}(),
-		TrackProcess: i.processTracker != nil,
+		LocalBypassPort:  i.localBypassPort,
+		SharedBypassPort: i.sharedBypassPort,
+		TrackProcess:     i.processTracker != nil,
 	}
 	backend, err := commonEBPF.PrepareTC(backendConfig)
 	if err != nil && i.processTracker != nil {

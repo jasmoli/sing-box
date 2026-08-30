@@ -36,7 +36,9 @@ The eBPF inbound does not use [Listen Fields](/configuration/shared/listen/).
     "exclude_uid_range": [],
     "include_android_user": [],
     "include_package": [],
-    "exclude_package": []
+    "exclude_package": [],
+    "bypass_port": [],
+    "bypass_port_range": []
   },
   "shared": {
     "dns_mode": "respect_policy",
@@ -46,7 +48,9 @@ The eBPF inbound does not use [Listen Fields](/configuration/shared/listen/).
     "include_source_cidr": [],
     "exclude_source_cidr": [],
     "include_mac_address": [],
-    "exclude_mac_address": []
+    "exclude_mac_address": [],
+    "bypass_port": [],
+    "bypass_port_range": []
   }
 }
 ```
@@ -140,6 +144,16 @@ Android package names to intercept. Android only.
 Android package names to bypass. Android only. Packages sharing one UID cannot
 be distinguished.
 
+#### local.bypass_port
+
+Destination ports to bypass local interception. TCP and UDP are covered when
+enabled by `network`. FakeIP and DNS interception take precedence.
+
+#### local.bypass_port_range
+
+Destination port ranges to bypass, in `start:end` format. The range is
+inclusive.
+
 ### shared
 
 #### shared.dns_mode
@@ -188,6 +202,16 @@ This option is available only on Ethernet-framed shared interfaces.
 over include policy.
 
 This option is available only on Ethernet-framed shared interfaces.
+
+#### shared.bypass_port
+
+Destination ports to bypass shared interception. TCP and UDP are covered when
+enabled by `network`. FakeIP and DNS interception take precedence.
+
+#### shared.bypass_port_range
+
+Destination port ranges to bypass, in `start:end` format. The range is
+inclusive.
 
 !!! note
 

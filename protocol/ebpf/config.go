@@ -5,6 +5,7 @@ package ebpf
 import (
 	"net"
 	"net/netip"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -43,8 +44,8 @@ func validateLocalOptions(enabled bool, options option.EBPFLocalOptions) error {
 	if len(options.IncludeUID) > 0 || len(options.IncludeUIDRange) > 0 ||
 		len(options.ExcludeUID) > 0 || len(options.ExcludeUIDRange) > 0 ||
 		len(options.IncludeAndroidUser) > 0 || len(options.IncludePackage) > 0 ||
-		len(options.ExcludePackage) > 0 {
-		return E.New("local UID policy requires local or hybrid mode")
+		len(options.ExcludePackage) > 0 || len(options.BypassPort) > 0 || len(options.BypassPortRange) > 0 {
+		return E.New("local options require local or hybrid mode")
 	}
 	return nil
 }
@@ -122,10 +123,53 @@ func validateSharedOptions(enabled bool, options option.EBPFSharedOptions) error
 	}
 	if options.DNSMode != "" || len(options.Interface) > 0 || options.IPv6 != nil || options.BypassPrivateAddress != nil ||
 		len(options.IncludeSourceCIDR) > 0 || len(options.ExcludeSourceCIDR) > 0 ||
-		len(options.IncludeMACAddress) > 0 || len(options.ExcludeMACAddress) > 0 {
+		len(options.IncludeMACAddress) > 0 || len(options.ExcludeMACAddress) > 0 ||
+		len(options.BypassPort) > 0 || len(options.BypassPortRange) > 0 {
 		return E.New("shared options require shared or hybrid mode")
 	}
 	return nil
+}
+
+func parsePortRanges(name string, ports []uint16, ranges []string) ([]commonEBPF.PortRange, error) {
+	result := make([]commonEBPF.PortRange, 0, len(ports)+len(ranges))
+	for _, port := range ports {
+		if port == 0 {
+			return nil, E.New(name, " contains port 0")
+		}
+		result = append(result, commonEBPF.PortRange{Start: port, End: port})
+	}
+	for _, value := range ranges {
+		separator := strings.IndexByte(value, ':')
+		if separator <= 0 || separator == len(value)-1 {
+			return nil, E.New(name, " invalid range: ", value)
+		}
+		start, err := strconv.ParseUint(value[:separator], 10, 16)
+		if err != nil || start == 0 {
+			return nil, E.New(name, " invalid range start: ", value)
+		}
+		end, err := strconv.ParseUint(value[separator+1:], 10, 16)
+		if err != nil || end == 0 || start > end {
+			return nil, E.New(name, " invalid range end: ", value)
+		}
+		result = append(result, commonEBPF.PortRange{Start: uint16(start), End: uint16(end)})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Start != result[j].Start {
+			return result[i].Start < result[j].Start
+		}
+		return result[i].End < result[j].End
+	})
+	merged := result[:0]
+	for _, current := range result {
+		if len(merged) == 0 || uint32(current.Start) > uint32(merged[len(merged)-1].End)+1 {
+			merged = append(merged, current)
+			continue
+		}
+		if current.End > merged[len(merged)-1].End {
+			merged[len(merged)-1].End = current.End
+		}
+	}
+	return merged, nil
 }
 
 func normalizeSharedOptions(options option.EBPFSharedOptions) (option.EBPFSharedOptions, error) {

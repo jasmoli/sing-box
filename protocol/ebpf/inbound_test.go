@@ -87,6 +87,8 @@ func TestValidateScopedOptions(t *testing.T) {
 		{IncludeAndroidUser: []int{0}},
 		{IncludePackage: []string{"com.example.include"}},
 		{ExcludePackage: []string{"com.example.exclude"}},
+		{BypassPort: []uint16{443}},
+		{BypassPortRange: []string{"8000:8080"}},
 	} {
 		if err := validateLocalOptions(false, options); err == nil {
 			t.Fatalf("expected local-only options to be rejected: %+v", options)
@@ -106,6 +108,22 @@ func TestValidateScopedOptions(t *testing.T) {
 func TestEnabledByDefault(t *testing.T) {
 	if !enabledByDefault(nil) || !enabledByDefault(common.Ptr(true)) || enabledByDefault(common.Ptr(false)) {
 		t.Fatal("unexpected default-enabled boolean behavior")
+	}
+}
+
+func TestParsePortRanges(t *testing.T) {
+	ranges, err := parsePortRanges("local.bypass_port", []uint16{443, 80}, []string{"8000:8002", "81:82", "82:83"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []commonEBPF.PortRange{{Start: 80, End: 83}, {Start: 443, End: 443}, {Start: 8000, End: 8002}}
+	if !slices.Equal(ranges, want) {
+		t.Fatalf("unexpected port ranges: got %v, want %v", ranges, want)
+	}
+	for _, invalid := range []string{"0:1", "2:1", "1", "1:65536"} {
+		if _, err = parsePortRanges("local.bypass_port", nil, []string{invalid}); err == nil {
+			t.Fatalf("expected invalid port range %q to fail", invalid)
+		}
 	}
 }
 

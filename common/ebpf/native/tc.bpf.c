@@ -587,6 +587,16 @@ NOINLINE struct bpf_sock *lookup_udp_socket(struct __sk_buff *skb,
     return sk_lookup_udp(skb, &tuple, tuple_size, BPF_F_CURRENT_NETNS, 0U);
 }
 
+INLINE bool source_mac_equal(const __u8 left[6], const __u8 right[6]) {
+    __u32 left_low, right_low;
+    __u16 left_high, right_high;
+    __builtin_memcpy(&left_low, left, 4U);
+    __builtin_memcpy(&right_low, right, 4U);
+    __builtin_memcpy(&left_high, left + 4U, 2U);
+    __builtin_memcpy(&right_high, right + 4U, 2U);
+    return left_low == right_low && left_high == right_high;
+}
+
 NOINLINE int assign_socket(struct __sk_buff *skb, const struct sb_tc_control *control,
     const struct sb_tc_assign_key *key, const __u8 source_mac[6], __u8 path) {
     bool source_mac_valid = (path & SB_TC_PATH_SOURCE_MAC_VALID) != 0U;
@@ -609,14 +619,7 @@ NOINLINE int assign_socket(struct __sk_buff *skb, const struct sb_tc_control *co
     bool assignment_changed = existing == 0 || existing->socket_cookie != value.socket_cookie ||
         existing->ifindex != value.ifindex ||
         existing->path != value.path || existing->source_mac_valid != value.source_mac_valid;
-    if (!assignment_changed) {
-        assignment_changed = existing->source_mac[0] != value.source_mac[0] ||
-            existing->source_mac[1] != value.source_mac[1] ||
-            existing->source_mac[2] != value.source_mac[2] ||
-            existing->source_mac[3] != value.source_mac[3] ||
-            existing->source_mac[4] != value.source_mac[4] ||
-            existing->source_mac[5] != value.source_mac[5];
-    }
+    if (!assignment_changed && source_mac_valid) assignment_changed = !source_mac_equal(existing->source_mac, value.source_mac);
     if (assignment_changed && map_update(&tc_assignment, &assignment_key, &value, BPF_ANY) != 0) {
         sk_release(socket);
         return TC_ACT_SHOT;
@@ -652,14 +655,7 @@ NOINLINE int assign_socket_legacy(struct __sk_buff *skb, const struct sb_tc_cont
     bool assignment_changed = existing == 0 || existing->socket_cookie != value.socket_cookie ||
         existing->ifindex != value.ifindex ||
         existing->path != value.path || existing->source_mac_valid != value.source_mac_valid;
-    if (!assignment_changed) {
-        assignment_changed = existing->source_mac[0] != value.source_mac[0] ||
-            existing->source_mac[1] != value.source_mac[1] ||
-            existing->source_mac[2] != value.source_mac[2] ||
-            existing->source_mac[3] != value.source_mac[3] ||
-            existing->source_mac[4] != value.source_mac[4] ||
-            existing->source_mac[5] != value.source_mac[5];
-    }
+    if (!assignment_changed && source_mac_valid) assignment_changed = !source_mac_equal(existing->source_mac, value.source_mac);
     if (assignment_changed && map_update(&tc_assignment, &assignment_key, &value, BPF_ANY) != 0) {
         sk_release(socket);
         return TC_ACT_SHOT;
@@ -692,14 +688,7 @@ NOINLINE int assign_udp_socket(struct __sk_buff *skb, const struct sb_tc_control
     bool assignment_changed = existing == 0 || existing->socket_cookie != value.socket_cookie ||
         existing->ifindex != value.ifindex || existing->path != value.path ||
         existing->source_mac_valid != value.source_mac_valid;
-    if (!assignment_changed) {
-        assignment_changed = existing->source_mac[0] != value.source_mac[0] ||
-            existing->source_mac[1] != value.source_mac[1] ||
-            existing->source_mac[2] != value.source_mac[2] ||
-            existing->source_mac[3] != value.source_mac[3] ||
-            existing->source_mac[4] != value.source_mac[4] ||
-            existing->source_mac[5] != value.source_mac[5];
-    }
+    if (!assignment_changed && source_mac_valid) assignment_changed = !source_mac_equal(existing->source_mac, value.source_mac);
     if (assignment_changed && map_update(&tc_assignment, &assignment_key, &value, BPF_ANY) != 0) {
         sk_release(socket);
         return TC_ACT_SHOT;

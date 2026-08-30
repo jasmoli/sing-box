@@ -32,7 +32,6 @@ const (
 	TCMapTcLocalBypassPort                     = "tc_local_bypass_port"
 	TCMapTcSelfSockets                         = "tc_self_sockets"
 	TCMapTcSharedBypassPort                    = "tc_shared_bypass_port"
-	TCMapTcSocketPolicy                        = "tc_socket_policy"
 	TCMapTcUidPolicy                           = "tc_uid_policy"
 	TCProgSingboxTcDeliveryIngress             = "singbox_tc_delivery_ingress"
 	TCProgSingboxTcDeliveryIngressLegacy       = "singbox_tc_delivery_ingress_legacy"
@@ -126,7 +125,6 @@ type TCMapSpecs struct {
 	TcLocalBypassPort   *ebpf.MapSpec `ebpf:"tc_local_bypass_port"`
 	TcSelfSockets       *ebpf.MapSpec `ebpf:"tc_self_sockets"`
 	TcSharedBypassPort  *ebpf.MapSpec `ebpf:"tc_shared_bypass_port"`
-	TcSocketPolicy      *ebpf.MapSpec `ebpf:"tc_socket_policy"`
 	TcUidPolicy         *ebpf.MapSpec `ebpf:"tc_uid_policy"`
 }
 
@@ -172,7 +170,6 @@ type TCMaps struct {
 	TcLocalBypassPort   *ebpf.Map `ebpf:"tc_local_bypass_port"`
 	TcSelfSockets       *ebpf.Map `ebpf:"tc_self_sockets"`
 	TcSharedBypassPort  *ebpf.Map `ebpf:"tc_shared_bypass_port"`
-	TcSocketPolicy      *ebpf.Map `ebpf:"tc_socket_policy"`
 	TcUidPolicy         *ebpf.Map `ebpf:"tc_uid_policy"`
 }
 
@@ -194,7 +191,6 @@ func (m *TCMaps) Close() error {
 		m.TcLocalBypassPort,
 		m.TcSelfSockets,
 		m.TcSharedBypassPort,
-		m.TcSocketPolicy,
 		m.TcUidPolicy,
 	)
 }

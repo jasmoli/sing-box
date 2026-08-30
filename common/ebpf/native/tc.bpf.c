@@ -51,9 +51,12 @@
 #define SB_TC_FLAG_HOST_IPV4 (1U << 16)
 #define SB_TC_FLAG_HOST_IPV6 (1U << 17)
 #define SB_TC_FLAG_SHARED_IPV6 (1U << 18)
-#define SB_TC_FLAG_SOCKET_POLICY (1U << 19)
 #define SB_TC_FLAG_LOCAL_BYPASS_PORT (1U << 20)
 #define SB_TC_FLAG_SHARED_BYPASS_PORT (1U << 21)
+
+#define SB_TC_SOCKET_METADATA_SELF_BYPASS (1U << 0)
+#define SB_TC_SOCKET_METADATA_POLICY_BYPASS (1U << 1)
+#define SB_TC_SOCKET_METADATA_POLICY_INTERCEPT (1U << 2)
 
 #define SB_TC_SOCKET_POLICY_BYPASS 1U
 #define SB_TC_SOCKET_POLICY_INTERCEPT 2U
@@ -205,7 +208,6 @@ MAP(tc_control, __u32, struct sb_tc_control, BPF_MAP_TYPE_ARRAY, 1U);
 MAP(tc_listener_sockets, __u32, __u32, BPF_MAP_TYPE_SOCKMAP, SB_TC_LISTENER_COUNT);
 MAP(tc_assignment, struct sb_tc_assign_key, struct sb_tc_assign_value, BPF_MAP_TYPE_LRU_HASH, 65536U);
 MAP(tc_self_sockets, __u64, __u32, BPF_MAP_TYPE_LRU_HASH, 65536U);
-MAP(tc_socket_policy, __u64, __u8, BPF_MAP_TYPE_LRU_HASH, 65536U);
 MAP(tc_uid_policy, struct sb_tc_uid_key, __u8, BPF_MAP_TYPE_LPM_TRIE, 4096U);
 MAP(tc_bypass_ipv4, struct sb_tc_ipv4_lpm_key, __u8, BPF_MAP_TYPE_LPM_TRIE, 65536U);
 MAP(tc_bypass_ipv6, struct sb_tc_ipv6_lpm_key, __u8, BPF_MAP_TYPE_LPM_TRIE, 65536U);
@@ -288,10 +290,10 @@ INLINE bool uid_bypassed(struct __sk_buff *skb, const struct sb_tc_control *cont
     return (control->flags & SB_TC_FLAG_UID_DEFAULT_BYPASS) != 0U ? !matched : matched;
 }
 
-INLINE __u8 socket_policy(__u64 socket_cookie, const struct sb_tc_control *control) {
-    if ((control->flags & SB_TC_FLAG_SOCKET_POLICY) == 0U || socket_cookie == 0U) return 0U;
-    __u8 *policy = map_lookup(&tc_socket_policy, &socket_cookie);
-    return policy != 0 ? *policy : 0U;
+INLINE __u32 socket_metadata(__u64 socket_cookie) {
+    if (socket_cookie == 0U) return 0U;
+    __u32 *metadata = map_lookup(&tc_self_sockets, &socket_cookie);
+    return metadata != 0 ? *metadata : 0U;
 }
 
 INLINE bool port_bypassed(const struct sb_tc_control *control,
@@ -386,12 +388,12 @@ INLINE bool source_mac_selected(const struct sb_tc_control *control, const __u8 
 }
 
 INLINE bool local_selected(struct __sk_buff *skb, const struct sb_tc_control *control,
-    const struct sb_tc_assign_key *key, __u8 precomputed_policy) {
+    const struct sb_tc_assign_key *key, __u32 socket_metadata_value) {
     if (fakeip_destination(control, key)) return true;
     if (dns_bypassed(key->protocol, key->destination_port, control->local_dns_mode)) return false;
     if (dns_selected(key->protocol, key->destination_port, control->local_dns_mode)) return true;
-    if (precomputed_policy == SB_TC_SOCKET_POLICY_BYPASS) return false;
-    if (precomputed_policy != SB_TC_SOCKET_POLICY_INTERCEPT && uid_bypassed(skb, control)) return false;
+    if ((socket_metadata_value & SB_TC_SOCKET_METADATA_POLICY_BYPASS) != 0U) return false;
+    if ((socket_metadata_value & SB_TC_SOCKET_METADATA_POLICY_INTERCEPT) == 0U && uid_bypassed(skb, control)) return false;
     if (key->destination_port == 53U && control->local_dns_mode == SB_TC_DNS_RESPECT_POLICY) return true;
     if (port_bypassed(control, key, false)) return false;
     if (host_destination(control, key)) return false;
@@ -737,11 +739,12 @@ INLINE int local_egress_mark(struct __sk_buff *skb, bool ethernet, bool track_pr
     if (control == 0 || control->enabled == 0U || control->delivery_ifindex == 0U) return TC_ACT_UNSPEC;
     if (skb->ingress_ifindex != 0U) return TC_ACT_UNSPEC;
     __u64 socket_cookie = get_socket_cookie(skb);
-    if (socket_cookie != 0U && map_lookup(&tc_self_sockets, &socket_cookie) != 0) return TC_ACT_UNSPEC;
+    __u32 socket_metadata_value = socket_metadata(socket_cookie);
+    if ((socket_metadata_value & SB_TC_SOCKET_METADATA_SELF_BYPASS) != 0U) return TC_ACT_UNSPEC;
     struct sb_tc_assign_key key;
     __u8 source_mac[6];
     if (!parse_flow(skb, control, SB_TC_FLAG_LOCAL_IPV6, ethernet, &key, source_mac)) return TC_ACT_UNSPEC;
-    if (!local_selected(skb, control, &key, socket_policy(socket_cookie, control))) return TC_ACT_UNSPEC;
+    if (!local_selected(skb, control, &key, socket_metadata_value)) return TC_ACT_UNSPEC;
     if (track_process) record_local_socket_cookie(&key, socket_cookie);
     return redirect_local(skb, control, ethernet);
 }

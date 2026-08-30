@@ -77,7 +77,6 @@ func TestEmbeddedTCObjectLayout(t *testing.T) {
 		"tc_listener_sockets":    {4, 4},
 		"tc_assignment":          {44, 24},
 		"tc_self_sockets":        {8, 4},
-		"tc_socket_policy":       {8, 1},
 		"tc_uid_policy":          {8, 1},
 		"tc_bypass_ipv4":         {8, 1},
 		"tc_bypass_ipv6":         {20, 1},

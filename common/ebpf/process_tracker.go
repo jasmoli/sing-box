@@ -14,8 +14,8 @@ import (
 const processSocketOwnerCapacity = 65536
 
 const (
-	socketPolicyBypass    = 1
-	socketPolicyIntercept = 2
+	socketMetadataPolicyBypass    = SocketMetadataPolicyBypass
+	socketMetadataPolicyIntercept = SocketMetadataPolicyIntercept
 )
 
 type ProcessTrackerConfig struct {
@@ -23,6 +23,7 @@ type ProcessTrackerConfig struct {
 	EnableUDP   bool
 	EnableIPv6  bool
 	LocalPolicy LocalPolicy
+	MetadataMap *CiliumEBPF.Map
 }
 
 type ProcessSocketOwner struct {
@@ -41,7 +42,7 @@ type processTrackerHook struct {
 type ProcessTracker struct {
 	owners              *CiliumEBPF.Map
 	policyUID           *CiliumEBPF.Map
-	socketPolicy        *CiliumEBPF.Map
+	metadata            *CiliumEBPF.Map
 	policyDefaultBypass bool
 	programs            []*CiliumEBPF.Program
 	links               []link.Link
@@ -92,19 +93,12 @@ func AttachProcessTracker(config ProcessTrackerConfig) (*ProcessTracker, error) 
 			_ = owners.Close()
 			return nil, E.Cause(mapErr, "populate eBPF process UID policy map")
 		}
-		socketPolicy, mapErr := CiliumEBPF.NewMap(&CiliumEBPF.MapSpec{
-			Name:       "sb_socket_policy",
-			Type:       CiliumEBPF.LRUHash,
-			KeySize:    8,
-			ValueSize:  1,
-			MaxEntries: processSocketOwnerCapacity,
-		})
-		if mapErr != nil {
+		if config.MetadataMap == nil {
 			_ = uidPolicy.Close()
 			_ = owners.Close()
-			return nil, E.Cause(mapErr, "create eBPF socket policy map")
+			return nil, E.New("eBPF socket metadata map is unavailable")
 		}
-		tracker.socketPolicy = socketPolicy
+		tracker.metadata = config.MetadataMap
 		tracker.policyUID = uidPolicy
 		tracker.policyDefaultBypass = defaultBypass
 	}
@@ -115,7 +109,7 @@ func AttachProcessTracker(config ProcessTrackerConfig) (*ProcessTracker, error) 
 		}
 	}()
 	for _, hook := range processTrackerHooks(config) {
-		program, loadErr := newProcessTrackerProgram(hook, owners.FD(), tracker.policyUIDFD(), tracker.socketPolicyFD(), tracker.policyDefaultBypass)
+		program, loadErr := newProcessTrackerProgram(hook, owners.FD(), tracker.policyUIDFD(), tracker.metadataFD(), tracker.policyDefaultBypass)
 		if loadErr != nil {
 			return nil, loadErr
 		}
@@ -151,13 +145,13 @@ func processTrackerHooks(config ProcessTrackerConfig) []processTrackerHook {
 	return hooks
 }
 
-func newProcessTrackerProgram(hook processTrackerHook, ownerMapFD, policyUIDMapFD, socketPolicyMapFD int, defaultBypass bool) (*CiliumEBPF.Program, error) {
+func newProcessTrackerProgram(hook processTrackerHook, ownerMapFD, policyUIDMapFD, metadataMapFD int, defaultBypass bool) (*CiliumEBPF.Program, error) {
 	program, err := CiliumEBPF.NewProgram(&CiliumEBPF.ProgramSpec{
 		Name:         "sb_proc_" + hook.name,
 		Type:         CiliumEBPF.CGroupSockAddr,
 		AttachType:   hook.attachType,
 		License:      "GPL",
-		Instructions: processTrackerInstructions(ownerMapFD, policyUIDMapFD, socketPolicyMapFD, defaultBypass),
+		Instructions: processTrackerInstructions(ownerMapFD, policyUIDMapFD, metadataMapFD, defaultBypass),
 	})
 	if err != nil {
 		return nil, E.Cause(err, "load eBPF process tracker ", hook.name, " hook")
@@ -165,7 +159,7 @@ func newProcessTrackerProgram(hook processTrackerHook, ownerMapFD, policyUIDMapF
 	return program, nil
 }
 
-func processTrackerInstructions(ownerMapFD, policyUIDMapFD, socketPolicyMapFD int, defaultBypass bool) asm.Instructions {
+func processTrackerInstructions(ownerMapFD, policyUIDMapFD, metadataMapFD int, defaultBypass bool) asm.Instructions {
 	instructions := asm.Instructions{
 		asm.FnGetSocketCookie.Call(),
 		asm.JEq.Imm(asm.R0, 0, "allow"),
@@ -197,7 +191,7 @@ func processTrackerInstructions(ownerMapFD, policyUIDMapFD, socketPolicyMapFD in
 		asm.FnMapUpdateElem.Call(),
 		asm.Ja.Label("policy"),
 	}
-	if policyUIDMapFD < 0 || socketPolicyMapFD < 0 {
+	if policyUIDMapFD < 0 || metadataMapFD < 0 {
 		instructions = append(instructions,
 			asm.Mov.Reg(asm.R0, asm.R0).WithSymbol("policy"),
 			asm.Mov.Imm(asm.R0, 1).WithSymbol("allow"),
@@ -207,7 +201,17 @@ func processTrackerInstructions(ownerMapFD, policyUIDMapFD, socketPolicyMapFD in
 	}
 	instructions = append(instructions,
 		asm.StoreImm(asm.RFP, -24, 32, asm.Word).WithSymbol("policy"),
-		asm.LoadMem(asm.R0, asm.RFP, -12, asm.Word),
+		asm.LoadMapPtr(asm.R1, metadataMapFD),
+		asm.Mov.Reg(asm.R2, asm.RFP),
+		asm.Add.Imm(asm.R2, -8),
+		asm.FnMapLookupElem.Call(),
+		asm.JEq.Imm(asm.R0, 0, "metadata_empty"),
+		asm.LoadMem(asm.R0, asm.R0, 0, asm.Word),
+		asm.And.Imm(asm.R0, SocketMetadataSelfBypass),
+		asm.StoreMem(asm.RFP, -28, asm.R0, asm.Word),
+		asm.Ja.Label("lookup_policy_uid"),
+		asm.StoreImm(asm.RFP, -28, 0, asm.Word).WithSymbol("metadata_empty"),
+		asm.LoadMem(asm.R0, asm.RFP, -12, asm.Word).WithSymbol("lookup_policy_uid"),
 		asm.BSwap(asm.R0, asm.Word),
 		asm.StoreMem(asm.RFP, -20, asm.R0, asm.Word),
 		asm.LoadMapPtr(asm.R1, policyUIDMapFD),
@@ -215,15 +219,19 @@ func processTrackerInstructions(ownerMapFD, policyUIDMapFD, socketPolicyMapFD in
 		asm.Add.Imm(asm.R2, -24),
 		asm.FnMapLookupElem.Call(),
 		asm.JEq.Imm(asm.R0, 0, "policy_unmatched"),
-		asm.StoreImm(asm.RFP, -28, socketPolicyIntercept, asm.Byte),
+		asm.LoadMem(asm.R0, asm.RFP, -28, asm.Word),
+		asm.Or.Imm(asm.R0, socketMetadataPolicyIntercept),
+		asm.StoreMem(asm.RFP, -28, asm.R0, asm.Word),
 		asm.Ja.Label("policy_update"),
-		asm.StoreImm(asm.RFP, -28, func() int64 {
+		asm.LoadMem(asm.R0, asm.RFP, -28, asm.Word).WithSymbol("policy_unmatched"),
+		asm.Or.Imm(asm.R0, int32(func() int64 {
 			if defaultBypass {
-				return socketPolicyBypass
+				return socketMetadataPolicyBypass
 			}
 			return 0
-		}(), asm.Byte).WithSymbol("policy_unmatched"),
-		asm.LoadMapPtr(asm.R1, socketPolicyMapFD).WithSymbol("policy_update"),
+		}())),
+		asm.StoreMem(asm.RFP, -28, asm.R0, asm.Word),
+		asm.LoadMapPtr(asm.R1, metadataMapFD).WithSymbol("policy_update"),
 		asm.Mov.Reg(asm.R2, asm.RFP),
 		asm.Add.Imm(asm.R2, -8),
 		asm.Mov.Reg(asm.R3, asm.RFP),
@@ -243,18 +251,11 @@ func (t *ProcessTracker) policyUIDFD() int {
 	return t.policyUID.FD()
 }
 
-func (t *ProcessTracker) socketPolicyFD() int {
-	if t == nil || t.socketPolicy == nil {
+func (t *ProcessTracker) metadataFD() int {
+	if t == nil || t.metadata == nil {
 		return -1
 	}
-	return t.socketPolicy.FD()
-}
-
-func (t *ProcessTracker) SocketPolicyMap() *CiliumEBPF.Map {
-	if t == nil {
-		return nil
-	}
-	return t.socketPolicy
+	return t.metadata.FD()
 }
 
 func (t *ProcessTracker) LookupOwner(socketCookie uint64) (ProcessSocketOwner, error) {
@@ -294,10 +295,6 @@ func (t *ProcessTracker) Close() error {
 	if t.policyUID != nil {
 		closeErr = E.Errors(closeErr, t.policyUID.Close())
 		t.policyUID = nil
-	}
-	if t.socketPolicy != nil {
-		closeErr = E.Errors(closeErr, t.socketPolicy.Close())
-		t.socketPolicy = nil
 	}
 	return closeErr
 }

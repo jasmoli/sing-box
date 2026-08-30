@@ -3,10 +3,24 @@
 package ebpf
 
 import (
+	"errors"
 	"testing"
 
+	CiliumEBPF "github.com/cilium/ebpf"
 	commonEBPF "github.com/sagernet/sing-box/common/ebpf"
+	"golang.org/x/sys/unix"
 )
+
+func TestTCXUnsupportedError(t *testing.T) {
+	if !tcxUnsupportedError(CiliumEBPF.ErrNotSupported) ||
+		!tcxUnsupportedError(errors.Join(errors.New("attach"), unix.EOPNOTSUPP)) ||
+		!tcxUnsupportedError(unix.ENOSYS) {
+		t.Fatal("expected unsupported TCX errors to be classified")
+	}
+	if tcxUnsupportedError(unix.EPERM) || tcxUnsupportedError(unix.EINVAL) {
+		t.Fatal("permission and interface-specific errors must not disable TCX globally")
+	}
+}
 
 func TestTCVethNamesFitLinuxLimit(t *testing.T) {
 	redirectName, deliveryName, err := nextTCVethNames()

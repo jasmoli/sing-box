@@ -30,6 +30,13 @@ const (
 )
 
 var tcVethSequence atomic.Uint32
+var tcxSupport atomic.Int32
+
+const (
+	tcxSupportUnknown int32 = iota
+	tcxSupportAvailable
+	tcxSupportUnavailable = -1
+)
 
 type tcInterfaceRole struct {
 	local  bool
@@ -701,9 +708,16 @@ func attachTCInterfaceWithLock(
 	// TCX links do not expose the numeric TC priority. Preserve the existing
 	// tc_priority contract by using TCX only with the default priority.
 	if priority == 1 {
-		if tcxAttachment, tcxErr := attachTCXInterface(link, backend, attachment); tcxAttachment && tcxErr == nil {
-			attachment.attachmentType = "tcx"
-			return attachment, nil
+		if tcxSupport.Load() != tcxSupportUnavailable {
+			tcxAttachment, tcxErr := attachTCXInterface(link, backend, attachment)
+			if tcxErr == nil && tcxAttachment {
+				tcxSupport.Store(tcxSupportAvailable)
+				attachment.attachmentType = "tcx"
+				return attachment, nil
+			}
+			if tcxUnsupportedError(tcxErr) {
+				tcxSupport.CompareAndSwap(tcxSupportUnknown, tcxSupportUnavailable)
+			}
 		}
 	}
 	if err = ensureTCClsact(link); err != nil {
@@ -737,6 +751,11 @@ func attachTCInterfaceWithLock(
 		}
 	}
 	return attachment, nil
+}
+
+func tcxUnsupportedError(err error) bool {
+	return err != nil && (errors.Is(err, CiliumEBPF.ErrNotSupported) ||
+		errors.Is(err, unix.EOPNOTSUPP) || errors.Is(err, unix.ENOSYS))
 }
 
 func attachTCXInterface(linkDevice netlink.Link, backend *commonEBPF.TCBackend, attachment *tcInterfaceAttachment) (bool, error) {

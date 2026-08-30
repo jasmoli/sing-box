@@ -273,12 +273,6 @@ INLINE bool uid_bypassed(struct __sk_buff *skb, const struct sb_tc_control *cont
     return (control->flags & SB_TC_FLAG_UID_DEFAULT_BYPASS) != 0U ? !matched : matched;
 }
 
-INLINE bool self_socket_bypassed(struct __sk_buff *skb) {
-    __u64 socket_cookie = get_socket_cookie(skb);
-    if (socket_cookie == 0U) return false;
-    return map_lookup(&tc_self_sockets, &socket_cookie) != 0;
-}
-
 INLINE bool dns_selected(__u8 protocol, __u16 destination_port, __u16 mode) {
     if ((protocol != IPPROTO_TCP_VALUE && protocol != IPPROTO_UDP_VALUE) || destination_port != 53U) return false;
     return mode == SB_TC_DNS_HIJACK;
@@ -684,8 +678,7 @@ NOINLINE int assign_udp_socket(struct __sk_buff *skb, const struct sb_tc_control
     return TC_ACT_OK;
 }
 
-INLINE void record_local_socket_cookie(struct __sk_buff *skb, const struct sb_tc_assign_key *key) {
-    __u64 socket_cookie = get_socket_cookie(skb);
+INLINE void record_local_socket_cookie(const struct sb_tc_assign_key *key, __u64 socket_cookie) {
     if (socket_cookie == 0U) return;
     struct sb_tc_assign_value *existing = map_lookup(&tc_assignment, key);
     if (existing != 0 && existing->socket_cookie == socket_cookie) return;
@@ -710,12 +703,13 @@ INLINE int local_egress_mark(struct __sk_buff *skb, bool ethernet, bool track_pr
     const struct sb_tc_control *control = load_control();
     if (control == 0 || control->enabled == 0U || control->delivery_ifindex == 0U) return TC_ACT_UNSPEC;
     if (skb->ingress_ifindex != 0U) return TC_ACT_UNSPEC;
-    if (self_socket_bypassed(skb)) return TC_ACT_UNSPEC;
+    __u64 socket_cookie = get_socket_cookie(skb);
+    if (socket_cookie != 0U && map_lookup(&tc_self_sockets, &socket_cookie) != 0) return TC_ACT_UNSPEC;
     struct sb_tc_assign_key key;
     __u8 source_mac[6];
     if (!parse_flow(skb, control, SB_TC_FLAG_LOCAL_IPV6, ethernet, &key, source_mac)) return TC_ACT_UNSPEC;
     if (!local_selected(skb, control, &key)) return TC_ACT_UNSPEC;
-    if (track_process) record_local_socket_cookie(skb, &key);
+    if (track_process) record_local_socket_cookie(&key, socket_cookie);
     return redirect_local(skb, control, ethernet);
 }
 

@@ -390,7 +390,7 @@ Match Clash mode.
 
 !!! quote ""
 
-    Only supported in graphical clients on Android and Apple platforms.
+    Only supported in graphical clients on Android and Apple platforms and in the Android core.
 
 Match network type.
 

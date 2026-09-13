@@ -115,7 +115,9 @@ func (s *Store) Start() error {
 		if s.inet6.addressRange.IsValid() {
 			s.inet6.current = s.inet6.addressRange.Addr().Next()
 		}
-		_ = storage.FakeIPReset()
+		if err := storage.FakeIPReset(); err != nil {
+			s.logger.Warn("reset FakeIP cache: ", err)
+		}
 	}
 	s.inet4.reservedEnd = s.inet4.current
 	s.inet6.reservedEnd = s.inet6.current
@@ -125,6 +127,25 @@ func (s *Store) Start() error {
 
 func (s *Store) Contains(address netip.Addr) bool {
 	return s.inet4.addressRange.Contains(address) || s.inet6.addressRange.Contains(address)
+}
+
+func (s *Store) rangeFor(isIPv6 bool) netip.Prefix {
+	if isIPv6 {
+		return s.inet6.addressRange
+	}
+	return s.inet4.addressRange
+}
+
+// loadDomain returns the stored address for a domain, ignoring records left
+// behind by a previously configured range. The cache outlives configuration
+// changes, and an address outside the current range no longer maps back to its
+// domain in the router, which would dial the fake address itself.
+func (s *Store) loadDomain(domain string, isIPv6 bool) (netip.Addr, bool) {
+	address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6)
+	if !loaded || !s.rangeFor(isIPv6).Contains(address) {
+		return netip.Addr{}, false
+	}
+	return address, true
 }
 
 func (s *Store) Close() error {
@@ -144,7 +165,7 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
-	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded {
+	if address, loaded := s.loadDomain(domain, isIPv6); loaded {
 		return address, nil
 	}
 
@@ -152,7 +173,7 @@ func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
 	defer s.addressAccess.Unlock()
 
 	// Double-check after acquiring lock
-	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded {
+	if address, loaded := s.loadDomain(domain, isIPv6); loaded {
 		return address, nil
 	}
 

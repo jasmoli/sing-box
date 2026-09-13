@@ -267,7 +267,14 @@ func (r *NetworkManager) InterfaceFinder() control.InterfaceFinder {
 func (r *NetworkManager) UpdateInterfaces() error {
 	defer r.postUpdateNetworkEnvironment()
 	if r.platformInterface == nil || !r.platformInterface.UsePlatformNetworkInterfaces() {
-		return r.interfaceFinder.Update()
+		err := r.interfaceFinder.Update()
+		if err != nil {
+			return err
+		}
+		if C.IsAndroid {
+			r.updateSystemInterfaces()
+		}
+		return nil
 	} else {
 		interfaces, err := r.platformInterface.NetworkInterfaces()
 		if err != nil {
@@ -446,6 +453,9 @@ func (r *NetworkManager) onWIFIStateChanged(state adapter.WIFIState) {
 		r.wifiState = state
 		r.stateAccess.Unlock()
 		r.postUpdateNetworkEnvironment()
+		if C.IsAndroid {
+			r.updateSystemInterfaces()
+		}
 		if state.SSID != "" {
 			r.logger.Info("WIFI state changed: SSID=", state.SSID, ", BSSID=", state.BSSID)
 		} else {

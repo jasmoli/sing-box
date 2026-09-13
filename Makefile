@@ -12,11 +12,17 @@ MAIN_PARAMS = $(PARAMS) -tags "$(TAGS)"
 MAIN = ./cmd/sing-box
 PREFIX ?= $(shell go env GOPATH)
 
-.PHONY: test release docs build schema
+.PHONY: test release docs build schema ebpf_generate ebpf_check
 
 build:
 	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS) $(MAIN)
+
+ebpf_generate:
+	$(MAKE) -C common/ebpf generate
+
+ebpf_check:
+	$(MAKE) -C common/ebpf check
 
 race:
 	export GOTOOLCHAIN=local && \

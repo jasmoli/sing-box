@@ -246,6 +246,16 @@ func New(options Options) (*Box, error) {
 	if err != nil {
 		return nil, E.Cause(err, "initialize network manager")
 	}
+	scope := adapter.NewScope(ctx, logFactory.Logger())
+	constructed := false
+	defer func() {
+		if !constructed {
+			_ = scope.Close()
+		}
+	}()
+	if err = dialer.PrepareEBPFSelfBypass(networkManager, options.Inbounds, scope); err != nil {
+		return nil, E.Cause(err, "prepare eBPF self-bypass")
+	}
 	service.MustRegister[adapter.NetworkManager](ctx, networkManager)
 	// Must register after ConnectionManager: the Apple HTTP engine's proxy bridge reads it from the context when Manager.Start resolves the default client.
 	httpClientManager := httpclient.NewManager(ctx, logFactory.NewLogger("httpclient"), options.HTTPClients, routeOptions.DefaultHTTPClient)
@@ -501,7 +511,7 @@ func New(options Options) (*Box, error) {
 		})
 		timeService.TimeService = ntpService
 	}
-	return &Box{
+	instance := &Box{
 		network:             networkManager,
 		endpoint:            endpointManager,
 		inbound:             inboundManager,
@@ -521,9 +531,11 @@ func New(options Options) (*Box, error) {
 		logger:              logFactory.Logger(),
 		internalService:     internalServices,
 		ntpService:          ntpService,
-		scope:               adapter.NewScope(ctx, logFactory.Logger()),
+		scope:               scope,
 		reloadChan:          reloadChan,
-	}, nil
+	}
+	constructed = true
+	return instance, nil
 }
 
 func (s *Box) PreStart() error {

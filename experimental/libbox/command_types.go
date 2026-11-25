@@ -110,6 +110,20 @@ type RuleProviderIterator interface {
 	HasNext() bool
 }
 
+type Rule struct {
+	Type     string
+	Payload  string
+	Proxy    string
+	Disabled bool
+	UUID     string
+}
+
+type RuleIterator interface {
+	Len() int32
+	HasNext() bool
+	Next() *Rule
+}
+
 type ProviderDelay struct {
 	Tag   string
 	Delay int32
@@ -471,6 +485,23 @@ func ruleProviderIteratorFromGRPC(providers *daemon.RuleProviders) RuleProviderI
 		})
 	}
 	return newIterator(libboxProviders)
+}
+
+func ruleIteratorFromGRPC(rules *daemon.Rules) RuleIterator {
+	if rules == nil || len(rules.Rules) == 0 {
+		return newIterator([]*Rule{})
+	}
+	var libboxRules []*Rule
+	for _, rule := range rules.Rules {
+		libboxRules = append(libboxRules, &Rule{
+			Type:     rule.Type,
+			Payload:  rule.Payload,
+			Proxy:    rule.Proxy,
+			Disabled: rule.Disabled,
+			UUID:     rule.Uuid,
+		})
+	}
+	return newIterator(libboxRules)
 }
 
 func providerDelayIteratorFromGRPC(result *daemon.ProviderHealthCheckResult) ProviderDelayIterator {

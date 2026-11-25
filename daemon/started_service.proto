@@ -29,6 +29,14 @@ service StartedService {
   rpc GetStartedAt(google.protobuf.Empty) returns(StartedAt) {}
 
   rpc SubscribeOutbounds(google.protobuf.Empty) returns (stream OutboundList) {}
+  rpc GetProviders(google.protobuf.Empty) returns (Providers) {}
+  rpc GetProvider(ProviderRequest) returns (Provider) {}
+  rpc UpdateProvider(ProviderRequest) returns (google.protobuf.Empty) {}
+  rpc HealthCheckProvider(ProviderRequest) returns (ProviderHealthCheckResult) {}
+  rpc HealthCheckProviderOutbound(ProviderOutboundRequest) returns (ProviderHealthCheckResult) {}
+  rpc GetRuleProviders(google.protobuf.Empty) returns (RuleProviders) {}
+  rpc GetRuleProvider(ProviderRequest) returns (RuleProvider) {}
+  rpc UpdateRuleProvider(ProviderRequest) returns (google.protobuf.Empty) {}
   rpc StartNetworkQualityTest(NetworkQualityTestRequest) returns (stream NetworkQualityTestProgress) {}
   rpc StartSTUNTest(STUNTestRequest) returns (stream STUNTestProgress) {}
   rpc SubscribeTailscaleStatus(google.protobuf.Empty) returns (stream TailscaleStatusUpdate) {}
@@ -233,6 +241,52 @@ message StartedAt {
 
 message OutboundList {
   repeated GroupItem outbounds = 1;
+}
+
+message Providers {
+  repeated Provider providers = 1;
+}
+
+message Provider {
+  string tag = 1;
+  string vehicleType = 2;
+  int64 updatedAt = 3;
+  repeated GroupItem outbounds = 4;
+  SubscriptionInfo subscriptionInfo = 5;
+}
+
+message SubscriptionInfo {
+  int64 upload = 1;
+  int64 download = 2;
+  int64 total = 3;
+  int64 expire = 4;
+}
+
+message ProviderRequest {
+  string tag = 1;
+}
+
+message ProviderOutboundRequest {
+  string tag = 1;
+  string outboundTag = 2;
+  string url = 3;
+  int32 timeout = 4;
+}
+
+message ProviderHealthCheckResult {
+  map<string, int32> delays = 1;
+}
+
+message RuleProviders {
+  repeated RuleProvider providers = 1;
+}
+
+message RuleProvider {
+  string tag = 1;
+  string vehicleType = 2;
+  string behavior = 3;
+  uint64 ruleCount = 4;
+  int64 updatedAt = 5;
 }
 
 message NetworkQualityTestRequest {

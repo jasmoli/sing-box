@@ -36,6 +36,8 @@ type Instance struct {
 	urlTestHistoryStorage *urltest.HistoryStorage
 	outboundManager       adapter.OutboundManager
 	endpointManager       adapter.EndpointManager
+	providerManager       adapter.ProviderManager
+	router                adapter.Router
 	logFactory            log.Factory
 }
 
@@ -142,6 +144,8 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 	i.cacheFile = service.FromContext[adapter.CacheFile](ctx)
 	i.outboundManager = service.FromContext[adapter.OutboundManager](ctx)
 	i.endpointManager = service.FromContext[adapter.EndpointManager](ctx)
+	i.providerManager = service.FromContext[adapter.ProviderManager](ctx)
+	i.router = service.FromContext[adapter.Router](ctx)
 	i.logFactory = boxInstance.LogFactory()
 	log.SetStdLogger(boxInstance.LogFactory().Logger())
 	return i, nil
@@ -158,6 +162,8 @@ func attachInstance(ctx context.Context) *Instance {
 		urlTestHistoryStorage: service.PtrFromContext[urltest.HistoryStorage](ctx),
 		outboundManager:       service.FromContext[adapter.OutboundManager](ctx),
 		endpointManager:       service.FromContext[adapter.EndpointManager](ctx),
+		providerManager:       service.FromContext[adapter.ProviderManager](ctx),
+		router:                service.FromContext[adapter.Router](ctx),
 		logFactory:            service.FromContext[log.Factory](ctx),
 	}
 }

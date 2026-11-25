@@ -98,3 +98,37 @@ API 密钥。
 #### tls
 
 TLS 配置,参阅 [TLS](/zh/configuration/shared/tls/#inbound)。
+
+### Providers
+
+该服务提供出站 provider 与规则集 provider 的管理接口。
+
+| RPC | 说明 |
+|-----|------|
+| `GetProviders` | 列出出站 provider |
+| `GetProvider` | 查看出站 provider |
+| `UpdateProvider` | 更新出站 provider |
+| `HealthCheckProvider` | 对 provider 内所有出站执行健康检查 |
+| `HealthCheckProviderOutbound` | 对 provider 内单个出站执行延迟测试 |
+| `GetRuleProviders` | 列出规则集 provider |
+| `GetRuleProvider` | 查看规则集 provider |
+| `UpdateRuleProvider` | 更新规则集 provider |
+
+出站 provider 详情包含载体类型、更新时间、出站及其最新 URL 测试结果，以及在可用时
+包含订阅信息。规则集 provider 详情包含载体类型、行为、规则数量和更新时间。
+
+内置客户端提供对应命令：
+
+```sh
+sing-box api provider list
+sing-box api provider show <provider>
+sing-box api provider update <provider>
+sing-box api provider healthcheck <provider>
+sing-box api provider healthcheck <provider> <outbound> --url <url> --timeout 5s
+sing-box api rule-provider list
+sing-box api rule-provider show <provider>
+sing-box api rule-provider update <provider>
+```
+
+`UpdateProvider` 与 `UpdateRuleProvider` 仅对远端 provider 拉取新内容；本地和内联
+provider 会直接返回成功。

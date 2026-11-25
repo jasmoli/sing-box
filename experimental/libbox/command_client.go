@@ -583,6 +583,97 @@ func (c *CommandClient) handleOutboundsStream(client daemon.StartedServiceClient
 	}
 }
 
+func (c *CommandClient) GetProviders() (OutboundProviderIterator, error) {
+	providers, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.Providers, error) {
+		return client.GetProviders(ctx, &emptypb.Empty{})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "get providers")
+	}
+	return outboundProviderIteratorFromGRPC(providers), nil
+}
+
+func (c *CommandClient) GetProvider(providerTag string) (*OutboundProvider, error) {
+	provider, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.Provider, error) {
+		return client.GetProvider(ctx, &daemon.ProviderRequest{Tag: providerTag})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "get provider")
+	}
+	return outboundProviderFromGRPC(provider), nil
+}
+
+func (c *CommandClient) UpdateProvider(providerTag string) error {
+	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.UpdateProvider(ctx, &daemon.ProviderRequest{Tag: providerTag})
+	})
+	if err != nil {
+		return E.Cause(err, "update provider")
+	}
+	return nil
+}
+
+func (c *CommandClient) HealthCheckProvider(providerTag string) (ProviderDelayIterator, error) {
+	result, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.ProviderHealthCheckResult, error) {
+		return client.HealthCheckProvider(ctx, &daemon.ProviderRequest{Tag: providerTag})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "health check provider")
+	}
+	return providerDelayIteratorFromGRPC(result), nil
+}
+
+func (c *CommandClient) HealthCheckProviderOutbound(providerTag string, outboundTag string, url string, timeout int32) (int32, error) {
+	result, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.ProviderHealthCheckResult, error) {
+		return client.HealthCheckProviderOutbound(ctx, &daemon.ProviderOutboundRequest{
+			Tag:         providerTag,
+			OutboundTag: outboundTag,
+			Url:         url,
+			Timeout:     timeout,
+		})
+	})
+	if err != nil {
+		return 0, E.Cause(err, "health check provider outbound")
+	}
+	return result.GetDelays()[outboundTag], nil
+}
+
+func (c *CommandClient) GetRuleProviders() (RuleProviderIterator, error) {
+	providers, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.RuleProviders, error) {
+		return client.GetRuleProviders(ctx, &emptypb.Empty{})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "get rule providers")
+	}
+	return ruleProviderIteratorFromGRPC(providers), nil
+}
+
+func (c *CommandClient) GetRuleProvider(providerTag string) (*RuleProvider, error) {
+	provider, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.RuleProvider, error) {
+		return client.GetRuleProvider(ctx, &daemon.ProviderRequest{Tag: providerTag})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "get rule provider")
+	}
+	return &RuleProvider{
+		Tag:         provider.Tag,
+		VehicleType: provider.VehicleType,
+		Behavior:    provider.Behavior,
+		RuleCount:   provider.RuleCount,
+		UpdatedAt:   provider.UpdatedAt,
+	}, nil
+}
+
+func (c *CommandClient) UpdateRuleProvider(providerTag string) error {
+	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.UpdateRuleProvider(ctx, &daemon.ProviderRequest{Tag: providerTag})
+	})
+	if err != nil {
+		return E.Cause(err, "update rule provider")
+	}
+	return nil
+}
+
 func (c *CommandClient) SelectOutbound(groupTag string, outboundTag string) error {
 	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
 		return client.SelectOutbound(ctx, &daemon.SelectOutboundRequest{

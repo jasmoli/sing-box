@@ -114,3 +114,39 @@ Update interval of the dashboard.
 #### tls
 
 TLS configuration, see [TLS](/configuration/shared/tls/#inbound).
+
+### Providers
+
+The service exposes outbound providers and rule-set providers.
+
+| RPC | Description |
+|-----|-------------|
+| `GetProviders` | List outbound providers |
+| `GetProvider` | Show an outbound provider |
+| `UpdateProvider` | Update an outbound provider |
+| `HealthCheckProvider` | Run a health check for all outbounds in a provider |
+| `HealthCheckProviderOutbound` | Run a delay test for one outbound in a provider |
+| `GetRuleProviders` | List rule-set providers |
+| `GetRuleProvider` | Show a rule-set provider |
+| `UpdateRuleProvider` | Update a rule-set provider |
+
+Outbound provider details include the vehicle type, update time, outbounds with
+their latest URL test results, and subscription information when available.
+Rule-set provider details include the vehicle type, behavior, rule count and
+update time.
+
+The bundled client provides matching commands:
+
+```sh
+sing-box api provider list
+sing-box api provider show <provider>
+sing-box api provider update <provider>
+sing-box api provider healthcheck <provider>
+sing-box api provider healthcheck <provider> <outbound> --url <url> --timeout 5s
+sing-box api rule-provider list
+sing-box api rule-provider show <provider>
+sing-box api rule-provider update <provider>
+```
+
+`UpdateProvider` and `UpdateRuleProvider` only fetch new content for remote
+providers; local and inline providers return success without changes.

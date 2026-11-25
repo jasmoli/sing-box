@@ -40,6 +40,14 @@ const (
 	StartedService_GetStartedAt_FullMethodName                   = "/daemon.StartedService/GetStartedAt"
 	StartedService_GetEBPFDiagnostics_FullMethodName             = "/daemon.StartedService/GetEBPFDiagnostics"
 	StartedService_SubscribeOutbounds_FullMethodName             = "/daemon.StartedService/SubscribeOutbounds"
+	StartedService_GetProviders_FullMethodName                   = "/daemon.StartedService/GetProviders"
+	StartedService_GetProvider_FullMethodName                    = "/daemon.StartedService/GetProvider"
+	StartedService_UpdateProvider_FullMethodName                 = "/daemon.StartedService/UpdateProvider"
+	StartedService_HealthCheckProvider_FullMethodName            = "/daemon.StartedService/HealthCheckProvider"
+	StartedService_HealthCheckProviderOutbound_FullMethodName    = "/daemon.StartedService/HealthCheckProviderOutbound"
+	StartedService_GetRuleProviders_FullMethodName               = "/daemon.StartedService/GetRuleProviders"
+	StartedService_GetRuleProvider_FullMethodName                = "/daemon.StartedService/GetRuleProvider"
+	StartedService_UpdateRuleProvider_FullMethodName             = "/daemon.StartedService/UpdateRuleProvider"
 	StartedService_StartNetworkQualityTest_FullMethodName        = "/daemon.StartedService/StartNetworkQualityTest"
 	StartedService_StartSTUNTest_FullMethodName                  = "/daemon.StartedService/StartSTUNTest"
 	StartedService_SubscribeTailscaleStatus_FullMethodName       = "/daemon.StartedService/SubscribeTailscaleStatus"
@@ -89,6 +97,14 @@ type StartedServiceClient interface {
 	GetStartedAt(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StartedAt, error)
 	GetEBPFDiagnostics(ctx context.Context, in *EBPFDiagnosticsRequest, opts ...grpc.CallOption) (*EBPFDiagnosticsResponse, error)
 	SubscribeOutbounds(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[OutboundList], error)
+	GetProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Providers, error)
+	GetProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*Provider, error)
+	UpdateProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	HealthCheckProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*ProviderHealthCheckResult, error)
+	HealthCheckProviderOutbound(ctx context.Context, in *ProviderOutboundRequest, opts ...grpc.CallOption) (*ProviderHealthCheckResult, error)
+	GetRuleProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RuleProviders, error)
+	GetRuleProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*RuleProvider, error)
+	UpdateRuleProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	StartNetworkQualityTest(ctx context.Context, in *NetworkQualityTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NetworkQualityTestProgress], error)
 	StartSTUNTest(ctx context.Context, in *STUNTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[STUNTestProgress], error)
 	SubscribeTailscaleStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TailscaleStatusUpdate], error)
@@ -384,6 +400,86 @@ func (c *startedServiceClient) SubscribeOutbounds(ctx context.Context, in *empty
 
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StartedService_SubscribeOutboundsClient = grpc.ServerStreamingClient[OutboundList]
+
+func (c *startedServiceClient) GetProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Providers, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Providers)
+	err := c.cc.Invoke(ctx, StartedService_GetProviders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*Provider, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Provider)
+	err := c.cc.Invoke(ctx, StartedService_GetProvider_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) UpdateProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StartedService_UpdateProvider_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) HealthCheckProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*ProviderHealthCheckResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProviderHealthCheckResult)
+	err := c.cc.Invoke(ctx, StartedService_HealthCheckProvider_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) HealthCheckProviderOutbound(ctx context.Context, in *ProviderOutboundRequest, opts ...grpc.CallOption) (*ProviderHealthCheckResult, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProviderHealthCheckResult)
+	err := c.cc.Invoke(ctx, StartedService_HealthCheckProviderOutbound_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetRuleProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RuleProviders, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RuleProviders)
+	err := c.cc.Invoke(ctx, StartedService_GetRuleProviders_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) GetRuleProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*RuleProvider, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RuleProvider)
+	err := c.cc.Invoke(ctx, StartedService_GetRuleProvider_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) UpdateRuleProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StartedService_UpdateRuleProvider_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func (c *startedServiceClient) StartNetworkQualityTest(ctx context.Context, in *NetworkQualityTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NetworkQualityTestProgress], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -738,6 +834,14 @@ type StartedServiceServer interface {
 	GetStartedAt(context.Context, *emptypb.Empty) (*StartedAt, error)
 	GetEBPFDiagnostics(context.Context, *EBPFDiagnosticsRequest) (*EBPFDiagnosticsResponse, error)
 	SubscribeOutbounds(*emptypb.Empty, grpc.ServerStreamingServer[OutboundList]) error
+	GetProviders(context.Context, *emptypb.Empty) (*Providers, error)
+	GetProvider(context.Context, *ProviderRequest) (*Provider, error)
+	UpdateProvider(context.Context, *ProviderRequest) (*emptypb.Empty, error)
+	HealthCheckProvider(context.Context, *ProviderRequest) (*ProviderHealthCheckResult, error)
+	HealthCheckProviderOutbound(context.Context, *ProviderOutboundRequest) (*ProviderHealthCheckResult, error)
+	GetRuleProviders(context.Context, *emptypb.Empty) (*RuleProviders, error)
+	GetRuleProvider(context.Context, *ProviderRequest) (*RuleProvider, error)
+	UpdateRuleProvider(context.Context, *ProviderRequest) (*emptypb.Empty, error)
 	StartNetworkQualityTest(*NetworkQualityTestRequest, grpc.ServerStreamingServer[NetworkQualityTestProgress]) error
 	StartSTUNTest(*STUNTestRequest, grpc.ServerStreamingServer[STUNTestProgress]) error
 	SubscribeTailscaleStatus(*emptypb.Empty, grpc.ServerStreamingServer[TailscaleStatusUpdate]) error
@@ -830,6 +934,30 @@ func (UnimplementedStartedServiceServer) GetEBPFDiagnostics(context.Context, *EB
 }
 func (UnimplementedStartedServiceServer) SubscribeOutbounds(*emptypb.Empty, grpc.ServerStreamingServer[OutboundList]) error {
 	return status.Error(codes.Unimplemented, "method SubscribeOutbounds not implemented")
+}
+func (UnimplementedStartedServiceServer) GetProviders(context.Context, *emptypb.Empty) (*Providers, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetProviders not implemented")
+}
+func (UnimplementedStartedServiceServer) GetProvider(context.Context, *ProviderRequest) (*Provider, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetProvider not implemented")
+}
+func (UnimplementedStartedServiceServer) UpdateProvider(context.Context, *ProviderRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateProvider not implemented")
+}
+func (UnimplementedStartedServiceServer) HealthCheckProvider(context.Context, *ProviderRequest) (*ProviderHealthCheckResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method HealthCheckProvider not implemented")
+}
+func (UnimplementedStartedServiceServer) HealthCheckProviderOutbound(context.Context, *ProviderOutboundRequest) (*ProviderHealthCheckResult, error) {
+	return nil, status.Error(codes.Unimplemented, "method HealthCheckProviderOutbound not implemented")
+}
+func (UnimplementedStartedServiceServer) GetRuleProviders(context.Context, *emptypb.Empty) (*RuleProviders, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRuleProviders not implemented")
+}
+func (UnimplementedStartedServiceServer) GetRuleProvider(context.Context, *ProviderRequest) (*RuleProvider, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRuleProvider not implemented")
+}
+func (UnimplementedStartedServiceServer) UpdateRuleProvider(context.Context, *ProviderRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateRuleProvider not implemented")
 }
 func (UnimplementedStartedServiceServer) StartNetworkQualityTest(*NetworkQualityTestRequest, grpc.ServerStreamingServer[NetworkQualityTestProgress]) error {
 	return status.Error(codes.Unimplemented, "method StartNetworkQualityTest not implemented")
@@ -1232,6 +1360,150 @@ func _StartedService_SubscribeOutbounds_Handler(srv interface{}, stream grpc.Ser
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type StartedService_SubscribeOutboundsServer = grpc.ServerStreamingServer[OutboundList]
 
+func _StartedService_GetProviders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetProviders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetProviders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetProviders(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetProvider(ctx, req.(*ProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_UpdateProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).UpdateProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_UpdateProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).UpdateProvider(ctx, req.(*ProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_HealthCheckProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).HealthCheckProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_HealthCheckProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).HealthCheckProvider(ctx, req.(*ProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_HealthCheckProviderOutbound_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderOutboundRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).HealthCheckProviderOutbound(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_HealthCheckProviderOutbound_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).HealthCheckProviderOutbound(ctx, req.(*ProviderOutboundRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetRuleProviders_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetRuleProviders(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetRuleProviders_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetRuleProviders(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_GetRuleProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetRuleProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetRuleProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetRuleProvider(ctx, req.(*ProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_UpdateRuleProvider_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProviderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).UpdateRuleProvider(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_UpdateRuleProvider_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).UpdateRuleProvider(ctx, req.(*ProviderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StartedService_StartNetworkQualityTest_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(NetworkQualityTestRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1601,6 +1873,38 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetEBPFDiagnostics",
 			Handler:    _StartedService_GetEBPFDiagnostics_Handler,
+		},
+		{
+			MethodName: "GetProviders",
+			Handler:    _StartedService_GetProviders_Handler,
+		},
+		{
+			MethodName: "GetProvider",
+			Handler:    _StartedService_GetProvider_Handler,
+		},
+		{
+			MethodName: "UpdateProvider",
+			Handler:    _StartedService_UpdateProvider_Handler,
+		},
+		{
+			MethodName: "HealthCheckProvider",
+			Handler:    _StartedService_HealthCheckProvider_Handler,
+		},
+		{
+			MethodName: "HealthCheckProviderOutbound",
+			Handler:    _StartedService_HealthCheckProviderOutbound_Handler,
+		},
+		{
+			MethodName: "GetRuleProviders",
+			Handler:    _StartedService_GetRuleProviders_Handler,
+		},
+		{
+			MethodName: "GetRuleProvider",
+			Handler:    _StartedService_GetRuleProvider_Handler,
+		},
+		{
+			MethodName: "UpdateRuleProvider",
+			Handler:    _StartedService_UpdateRuleProvider_Handler,
 		},
 		{
 			MethodName: "SetTailscaleExitNode",

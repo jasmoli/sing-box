@@ -37,6 +37,8 @@ type Instance struct {
 	outboundManager       adapter.OutboundManager
 	inboundManager        adapter.InboundManager
 	endpointManager       adapter.EndpointManager
+	providerManager       adapter.ProviderManager
+	router                adapter.Router
 	logFactory            log.Factory
 }
 
@@ -144,6 +146,8 @@ func (s *StartedService) newInstance(ctx context.Context, profileContent string,
 	i.outboundManager = service.FromContext[adapter.OutboundManager](ctx)
 	i.inboundManager = service.FromContext[adapter.InboundManager](ctx)
 	i.endpointManager = service.FromContext[adapter.EndpointManager](ctx)
+	i.providerManager = service.FromContext[adapter.ProviderManager](ctx)
+	i.router = service.FromContext[adapter.Router](ctx)
 	i.logFactory = boxInstance.LogFactory()
 	log.SetStdLogger(boxInstance.LogFactory().Logger())
 	return i, nil
@@ -161,6 +165,8 @@ func attachInstance(ctx context.Context) *Instance {
 		outboundManager:       service.FromContext[adapter.OutboundManager](ctx),
 		inboundManager:        service.FromContext[adapter.InboundManager](ctx),
 		endpointManager:       service.FromContext[adapter.EndpointManager](ctx),
+		providerManager:       service.FromContext[adapter.ProviderManager](ctx),
+		router:                service.FromContext[adapter.Router](ctx),
 		logFactory:            service.FromContext[log.Factory](ctx),
 	}
 }

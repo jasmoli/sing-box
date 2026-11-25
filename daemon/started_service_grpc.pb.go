@@ -48,6 +48,8 @@ const (
 	StartedService_GetRuleProviders_FullMethodName               = "/daemon.StartedService/GetRuleProviders"
 	StartedService_GetRuleProvider_FullMethodName                = "/daemon.StartedService/GetRuleProvider"
 	StartedService_UpdateRuleProvider_FullMethodName             = "/daemon.StartedService/UpdateRuleProvider"
+	StartedService_GetRules_FullMethodName                       = "/daemon.StartedService/GetRules"
+	StartedService_ChangeRuleStatus_FullMethodName               = "/daemon.StartedService/ChangeRuleStatus"
 	StartedService_StartNetworkQualityTest_FullMethodName        = "/daemon.StartedService/StartNetworkQualityTest"
 	StartedService_StartSTUNTest_FullMethodName                  = "/daemon.StartedService/StartSTUNTest"
 	StartedService_SubscribeTailscaleStatus_FullMethodName       = "/daemon.StartedService/SubscribeTailscaleStatus"
@@ -105,6 +107,8 @@ type StartedServiceClient interface {
 	GetRuleProviders(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*RuleProviders, error)
 	GetRuleProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*RuleProvider, error)
 	UpdateRuleProvider(ctx context.Context, in *ProviderRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	GetRules(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Rules, error)
+	ChangeRuleStatus(ctx context.Context, in *ChangeRuleStatusRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	StartNetworkQualityTest(ctx context.Context, in *NetworkQualityTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NetworkQualityTestProgress], error)
 	StartSTUNTest(ctx context.Context, in *STUNTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[STUNTestProgress], error)
 	SubscribeTailscaleStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TailscaleStatusUpdate], error)
@@ -481,6 +485,26 @@ func (c *startedServiceClient) UpdateRuleProvider(ctx context.Context, in *Provi
 	return out, nil
 }
 
+func (c *startedServiceClient) GetRules(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*Rules, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(Rules)
+	err := c.cc.Invoke(ctx, StartedService_GetRules_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *startedServiceClient) ChangeRuleStatus(ctx context.Context, in *ChangeRuleStatusRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(emptypb.Empty)
+	err := c.cc.Invoke(ctx, StartedService_ChangeRuleStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *startedServiceClient) StartNetworkQualityTest(ctx context.Context, in *NetworkQualityTestRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[NetworkQualityTestProgress], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	stream, err := c.cc.NewStream(ctx, &StartedService_ServiceDesc.Streams[7], StartedService_StartNetworkQualityTest_FullMethodName, cOpts...)
@@ -842,6 +866,8 @@ type StartedServiceServer interface {
 	GetRuleProviders(context.Context, *emptypb.Empty) (*RuleProviders, error)
 	GetRuleProvider(context.Context, *ProviderRequest) (*RuleProvider, error)
 	UpdateRuleProvider(context.Context, *ProviderRequest) (*emptypb.Empty, error)
+	GetRules(context.Context, *emptypb.Empty) (*Rules, error)
+	ChangeRuleStatus(context.Context, *ChangeRuleStatusRequest) (*emptypb.Empty, error)
 	StartNetworkQualityTest(*NetworkQualityTestRequest, grpc.ServerStreamingServer[NetworkQualityTestProgress]) error
 	StartSTUNTest(*STUNTestRequest, grpc.ServerStreamingServer[STUNTestProgress]) error
 	SubscribeTailscaleStatus(*emptypb.Empty, grpc.ServerStreamingServer[TailscaleStatusUpdate]) error
@@ -958,6 +984,12 @@ func (UnimplementedStartedServiceServer) GetRuleProvider(context.Context, *Provi
 }
 func (UnimplementedStartedServiceServer) UpdateRuleProvider(context.Context, *ProviderRequest) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateRuleProvider not implemented")
+}
+func (UnimplementedStartedServiceServer) GetRules(context.Context, *emptypb.Empty) (*Rules, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRules not implemented")
+}
+func (UnimplementedStartedServiceServer) ChangeRuleStatus(context.Context, *ChangeRuleStatusRequest) (*emptypb.Empty, error) {
+	return nil, status.Error(codes.Unimplemented, "method ChangeRuleStatus not implemented")
 }
 func (UnimplementedStartedServiceServer) StartNetworkQualityTest(*NetworkQualityTestRequest, grpc.ServerStreamingServer[NetworkQualityTestProgress]) error {
 	return status.Error(codes.Unimplemented, "method StartNetworkQualityTest not implemented")
@@ -1504,6 +1536,42 @@ func _StartedService_UpdateRuleProvider_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _StartedService_GetRules_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).GetRules(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_GetRules_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).GetRules(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _StartedService_ChangeRuleStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChangeRuleStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StartedServiceServer).ChangeRuleStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: StartedService_ChangeRuleStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StartedServiceServer).ChangeRuleStatus(ctx, req.(*ChangeRuleStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _StartedService_StartNetworkQualityTest_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(NetworkQualityTestRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -1905,6 +1973,14 @@ var StartedService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateRuleProvider",
 			Handler:    _StartedService_UpdateRuleProvider_Handler,
+		},
+		{
+			MethodName: "GetRules",
+			Handler:    _StartedService_GetRules_Handler,
+		},
+		{
+			MethodName: "ChangeRuleStatus",
+			Handler:    _StartedService_ChangeRuleStatus_Handler,
 		},
 		{
 			MethodName: "SetTailscaleExitNode",

@@ -150,3 +150,18 @@ sing-box api rule-provider update <provider>
 
 `UpdateProvider` and `UpdateRuleProvider` only fetch new content for remote
 providers; local and inline providers return success without changes.
+
+### Rules
+
+| RPC | Description |
+|-----|-------------|
+| `GetRules` | List routing rules |
+| `ChangeRuleStatus` | Toggle the enabled state of a routing rule |
+
+Each rule includes its type, payload, action, current disabled state and UUID.
+`ChangeRuleStatus` requires the full UUID and toggles the rule state.
+
+```sh
+sing-box api rule list
+sing-box api rule toggle <uuid>
+```

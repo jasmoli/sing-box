@@ -38,6 +38,8 @@ service StartedService {
   rpc GetRuleProviders(google.protobuf.Empty) returns (RuleProviders) {}
   rpc GetRuleProvider(ProviderRequest) returns (RuleProvider) {}
   rpc UpdateRuleProvider(ProviderRequest) returns (google.protobuf.Empty) {}
+  rpc GetRules(google.protobuf.Empty) returns (Rules) {}
+  rpc ChangeRuleStatus(ChangeRuleStatusRequest) returns (google.protobuf.Empty) {}
   rpc StartNetworkQualityTest(NetworkQualityTestRequest) returns (stream NetworkQualityTestProgress) {}
   rpc StartSTUNTest(STUNTestRequest) returns (stream STUNTestProgress) {}
   rpc SubscribeTailscaleStatus(google.protobuf.Empty) returns (stream TailscaleStatusUpdate) {}
@@ -288,6 +290,22 @@ message RuleProvider {
   string behavior = 3;
   uint64 ruleCount = 4;
   int64 updatedAt = 5;
+}
+
+message Rules {
+  repeated Rule rules = 1;
+}
+
+message Rule {
+  string type = 1;
+  string payload = 2;
+  string proxy = 3;
+  bool disabled = 4;
+  string uuid = 5;
+}
+
+message ChangeRuleStatusRequest {
+  string uuid = 1;
 }
 
 message NetworkQualityTestRequest {

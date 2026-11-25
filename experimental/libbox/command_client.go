@@ -674,6 +674,26 @@ func (c *CommandClient) UpdateRuleProvider(providerTag string) error {
 	return nil
 }
 
+func (c *CommandClient) GetRules() (RuleIterator, error) {
+	rules, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*daemon.Rules, error) {
+		return client.GetRules(ctx, &emptypb.Empty{})
+	})
+	if err != nil {
+		return nil, E.Cause(err, "get rules")
+	}
+	return ruleIteratorFromGRPC(rules), nil
+}
+
+func (c *CommandClient) ChangeRuleStatus(uuid string) error {
+	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
+		return client.ChangeRuleStatus(ctx, &daemon.ChangeRuleStatusRequest{Uuid: uuid})
+	})
+	if err != nil {
+		return E.Cause(err, "change rule status")
+	}
+	return nil
+}
+
 func (c *CommandClient) SelectOutbound(groupTag string, outboundTag string) error {
 	_, err := callWithResult(c, func(ctx context.Context, client daemon.StartedServiceClient) (*emptypb.Empty, error) {
 		return client.SelectOutbound(ctx, &daemon.SelectOutboundRequest{

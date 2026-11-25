@@ -142,3 +142,18 @@ sing-box api rule-provider update <provider>
 
 `UpdateProvider` 与 `UpdateRuleProvider` 仅对远端 provider 拉取新内容；本地和内联
 provider 会直接返回成功。
+
+### Rules
+
+| RPC | 说明 |
+|-----|------|
+| `GetRules` | 列出路由规则 |
+| `ChangeRuleStatus` | 切换路由规则的启用状态 |
+
+每条规则包含类型、内容、动作、当前禁用状态和 UUID。`ChangeRuleStatus` 需要完整
+UUID，并切换规则的启用状态。
+
+```sh
+sing-box api rule list
+sing-box api rule toggle <uuid>
+```

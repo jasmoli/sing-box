@@ -73,6 +73,54 @@ type OutboundGroupItemIterator interface {
 	HasNext() bool
 }
 
+type ProviderSubscriptionInfo struct {
+	Upload   int64
+	Download int64
+	Total    int64
+	Expire   int64
+}
+
+type OutboundProvider struct {
+	Tag              string
+	VehicleType      string
+	UpdatedAt        int64
+	SubscriptionInfo *ProviderSubscriptionInfo
+	itemList         []*OutboundGroupItem
+}
+
+func (p *OutboundProvider) GetOutbounds() OutboundGroupItemIterator {
+	return newIterator(p.itemList)
+}
+
+type OutboundProviderIterator interface {
+	Next() *OutboundProvider
+	HasNext() bool
+}
+
+type RuleProvider struct {
+	Tag         string
+	VehicleType string
+	Behavior    string
+	RuleCount   uint64
+	UpdatedAt   int64
+}
+
+type RuleProviderIterator interface {
+	Next() *RuleProvider
+	HasNext() bool
+}
+
+type ProviderDelay struct {
+	Tag   string
+	Delay int32
+}
+
+type ProviderDelayIterator interface {
+	Len() int32
+	HasNext() bool
+	Next() *ProviderDelay
+}
+
 const (
 	ConnectionStateAll = iota
 	ConnectionStateActive
@@ -370,6 +418,73 @@ func outboundGroupItemListFromGRPC(list *daemon.OutboundList) OutboundGroupItemI
 		})
 	}
 	return newIterator(items)
+}
+
+func outboundProviderIteratorFromGRPC(providers *daemon.Providers) OutboundProviderIterator {
+	if providers == nil || len(providers.Providers) == 0 {
+		return newIterator([]*OutboundProvider{})
+	}
+	var libboxProviders []*OutboundProvider
+	for _, provider := range providers.Providers {
+		libboxProviders = append(libboxProviders, outboundProviderFromGRPC(provider))
+	}
+	return newIterator(libboxProviders)
+}
+
+func outboundProviderFromGRPC(provider *daemon.Provider) *OutboundProvider {
+	libboxProvider := &OutboundProvider{
+		Tag:         provider.Tag,
+		VehicleType: provider.VehicleType,
+		UpdatedAt:   provider.UpdatedAt,
+	}
+	if provider.SubscriptionInfo != nil {
+		libboxProvider.SubscriptionInfo = &ProviderSubscriptionInfo{
+			Upload:   provider.SubscriptionInfo.Upload,
+			Download: provider.SubscriptionInfo.Download,
+			Total:    provider.SubscriptionInfo.Total,
+			Expire:   provider.SubscriptionInfo.Expire,
+		}
+	}
+	for _, item := range provider.Outbounds {
+		libboxProvider.itemList = append(libboxProvider.itemList, &OutboundGroupItem{
+			Tag:          item.Tag,
+			Type:         item.Type,
+			URLTestTime:  item.UrlTestTime,
+			URLTestDelay: item.UrlTestDelay,
+		})
+	}
+	return libboxProvider
+}
+
+func ruleProviderIteratorFromGRPC(providers *daemon.RuleProviders) RuleProviderIterator {
+	if providers == nil || len(providers.Providers) == 0 {
+		return newIterator([]*RuleProvider{})
+	}
+	var libboxProviders []*RuleProvider
+	for _, provider := range providers.Providers {
+		libboxProviders = append(libboxProviders, &RuleProvider{
+			Tag:         provider.Tag,
+			VehicleType: provider.VehicleType,
+			Behavior:    provider.Behavior,
+			RuleCount:   provider.RuleCount,
+			UpdatedAt:   provider.UpdatedAt,
+		})
+	}
+	return newIterator(libboxProviders)
+}
+
+func providerDelayIteratorFromGRPC(result *daemon.ProviderHealthCheckResult) ProviderDelayIterator {
+	if result == nil || len(result.Delays) == 0 {
+		return newIterator([]*ProviderDelay{})
+	}
+	var delays []*ProviderDelay
+	for tag, delay := range result.Delays {
+		delays = append(delays, &ProviderDelay{
+			Tag:   tag,
+			Delay: delay,
+		})
+	}
+	return newIterator(delays)
 }
 
 func connectionFromGRPC(conn *daemon.Connection) Connection {
